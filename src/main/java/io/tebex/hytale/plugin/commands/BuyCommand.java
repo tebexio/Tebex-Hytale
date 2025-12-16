@@ -29,7 +29,7 @@ public class BuyCommand extends PlayerCommandBase {
     }
 
     protected void execute(@Nonnull CommandContext context, @Nonnull Store<EntityStore> store, @Nonnull Ref<EntityStore> ref, @Nonnull PlayerRef playerRef, @Nonnull World world) {
-        Player player = (Player)store.getComponent(ref, Player.getComponentType());
+        Player player = store.getComponent(ref, Player.getComponentType());
         assert player != null;
 
         var categories = TebexPlugin.get().getCategoriesCache();

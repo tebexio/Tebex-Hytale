@@ -20,7 +20,6 @@ public class TebexHelpCommand extends CommandBase {
         ctx.sendMessage(Message.raw("/tebex checkout <packageId>"));
         ctx.sendMessage(Message.raw("/tebex sendlink <packageId> <username>"));
         ctx.sendMessage(Message.raw("/tebex debug <true/false>"));
-        ctx.sendMessage(Message.raw("/tebex ban <username> <reason>"));
         ctx.sendMessage(Message.raw("/tebex goals"));
         ctx.sendMessage(Message.raw("/tebex lookup <username>"));
         ctx.sendMessage(Message.raw("/tebex reload"));

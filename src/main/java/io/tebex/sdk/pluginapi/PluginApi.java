@@ -7,6 +7,7 @@ import io.tebex.sdk.http.IHttpProvider;
 import io.tebex.sdk.common.Verb;
 import io.tebex.sdk.pluginapi.models.*;
 import io.tebex.sdk.pluginapi.models.Package;
+import io.tebex.sdk.pluginapi.models.requests.CheckoutRequest;
 import io.tebex.sdk.pluginapi.models.requests.DeleteCommandsRequest;
 import io.tebex.sdk.pluginapi.models.responses.CommandQueueResponse;
 import io.tebex.sdk.pluginapi.models.responses.OfflineCommandsResponse;
@@ -67,6 +68,11 @@ public class PluginApi {
 
     public OfflineCommandsResponse getOfflineCommands() throws IOException, InterruptedException {
         return GSON.fromJson(http(Verb.GET, "queue/offline-commands"), OfflineCommandsResponse.class);
+    }
+
+    @Nonnull
+    public CheckoutUrl checkout(CheckoutRequest req) throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.POST, "checkout", req), CheckoutUrl.class);
     }
 
     public void deleteCompletedCommands(ConcurrentHashMap<Integer, QueuedCommand> completedCommands) throws IOException, InterruptedException {

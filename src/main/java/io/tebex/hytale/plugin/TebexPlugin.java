@@ -27,7 +27,9 @@ import lombok.Setter;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 
@@ -38,15 +40,15 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Getter private PluginApi pluginApi;
 
     // tebex fields
-    private final Config<TebexConfig> config;
+    @Getter private final Config<TebexConfig> config;
     @Nullable @Getter private ServerInformation tebexServerInfo;
     @Setter private long nextCheckQueue;
     private long nextSendPlayerEvents;
     private long nextSendServerEvents;
     private final List<PluginEvent> pluginEvents = new ArrayList<>();
     private final List<ServerEvent> serverEvents = new ArrayList<>();
-    @Getter private List<Category> categoriesCache = new ArrayList<>();
-    @Getter private List<Package> packagesCache = new ArrayList<>();
+    @Getter private Map<Integer, Category> categoriesCache = new HashMap<>();
+    @Getter private Map<Integer, Package> packagesCache = new HashMap<>();
     @Getter private List<CommunityGoal> communityGoalsCache = new ArrayList<>();
     private final ConcurrentHashMap<Integer, QueuedCommand> completedCommands = new ConcurrentHashMap<>();
 
@@ -106,6 +108,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return;
         }
 
+        info("Successfully authenticated with " + tebexServerInfo.getStore().getName() + "(" + tebexServerInfo.getStore().getDomain() + ") as " + tebexServerInfo.getServer().getName());
         //FIXME make sure it's a hytale store, or else shutdown
 //        if (!this.server.getStore().getGameType().equals("hytale")) {
 //            error("This plugin only works with Hytale stores. Please use a game server key associated with a Hytale store.");
@@ -182,15 +185,17 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public void refreshServerInfo() {
         try {
             ServerInformation serverInfo = pluginApi.getServerInformation();
-            var store = serverInfo.getStore();
-            info("Successfully authenticated with " + store.getName() + "(" + store.getDomain() + ") as " + serverInfo.getServer().getName());
             debug("Downloading store info...");
-            packagesCache = pluginApi.getPackages();
+            pluginApi.getPackages().forEach(p -> {
+                packagesCache.put(p.getId(), p);
+            });
+            var remoteCategories = pluginApi.getCategories();
+            remoteCategories.sort(java.util.Comparator.comparingInt(Category::getOrder));
+            pluginApi.getCategories().forEach(c -> {
+                categoriesCache.put(c.getId(), c);
+            });
             communityGoalsCache = pluginApi.getCommunityGoals();
-            categoriesCache = pluginApi.getCategories();
-            categoriesCache.sort(java.util.Comparator.comparingInt(Category::getOrder));
             debug("Packages: " + packagesCache.size() + ", Categories: " + categoriesCache.size() + ", Community Goals: " + communityGoalsCache.size());
-            info("Tebex is set up successfully!");
             this.tebexServerInfo = serverInfo;
         } catch (Exception e) {
             error("Failed to refresh server info: " + e.getMessage(), e);
@@ -370,6 +375,18 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return config.get().debugMode;
         }
         return false;
+    }
+
+    public void setDebugMode(boolean value) {
+        if (config.get() != null) {
+            config.get().debugMode = value;
+            config.save();
+            if (value) {
+                info("Tebex debug mode enabled");
+            } else {
+                info("Tebex debug mode disabled");
+            }
+        }
     }
 
     @Override

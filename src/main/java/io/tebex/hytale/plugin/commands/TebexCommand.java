@@ -12,9 +12,7 @@ public class TebexCommand extends CommandCollectionBase {
         this.addSubCommand(new TebexCheckoutCommand());
         this.addSubCommand(new TebexSendLinkCommand());
         this.addSubCommand(new TebexDebugCommand());
-        this.addSubCommand(new TebexBanCommand());
         this.addSubCommand(new TebexGoalsCommand());
-        this.addSubCommand(new TebexLookupCommand());
         this.addSubCommand(new TebexReloadCommand());
     }
 }
