@@ -1,0 +1,32 @@
+plugins {
+    id 'java'
+}
+
+group = 'io.tebex'
+version = '0.0.1'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Local hytale server
+    implementation files('libs/HytaleServer.jar')
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.projectlombok:lombok:1.18.42'
+    testCompileOnly 'org.projectlombok:lombok:1.18.42'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.42'
+}
+
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(Test).configureEach {
+    enabled = false
+}

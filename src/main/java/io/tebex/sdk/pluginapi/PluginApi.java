@@ -1,0 +1,124 @@
+package io.tebex.sdk.pluginapi;
+
+import com.google.gson.*;
+import com.google.gson.annotations.SerializedName;
+import com.google.gson.reflect.TypeToken;
+import io.tebex.sdk.http.IHttpProvider;
+import io.tebex.sdk.common.Verb;
+import io.tebex.sdk.pluginapi.models.*;
+import io.tebex.sdk.pluginapi.models.Package;
+import io.tebex.sdk.pluginapi.models.requests.DeleteCommandsRequest;
+import io.tebex.sdk.pluginapi.models.responses.CommandQueueResponse;
+import io.tebex.sdk.pluginapi.models.responses.OfflineCommandsResponse;
+import io.tebex.sdk.pluginapi.models.responses.OnlineCommandsResponse;
+import lombok.Getter;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Methods for interacting with the Tebex Plugin API */
+public class PluginApi {
+    /** Base url for plugin api requests */
+    private static final String PLUGIN_API_URL = "https://plugin.tebex.io/";
+
+    /** GSON formatter to generate JSON */
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().setDateFormat("yyyy-MM-dd HH:mm:ss")
+            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES).create();
+
+    /** Interface for telling a plugin what to do */
+    private final IPluginAdapter plugin;
+
+    public PluginApi(IPluginAdapter plugin, String secretKey) {
+        this.plugin = plugin;
+        setSecretKey(secretKey);
+    }
+
+    public void setSecretKey(@Nonnull String secretKey) {
+        this.plugin.getHttpProvider().setCustomHeader("X-Tebex-Secret", secretKey);
+    }
+
+    /** @return GET /information, the {@link ServerInformation} about the linked store. */
+    public ServerInformation getServerInformation() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "information"), ServerInformation.class);
+    }
+
+    public List<Category> getCategories() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "listing"), Responses.CategoriesResponse.class).getCategories();
+    }
+
+    public List<Package> getPackages() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "packages"), new TypeToken<List<Package>>() {}.getType());
+    }
+
+    public List<CommunityGoal> getCommunityGoals() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "community_goals"), new TypeToken<List<CommunityGoal>>() {}.getType());
+    }
+
+    public CommandQueueResponse getCommandQueue() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "queue"), CommandQueueResponse.class);
+    }
+
+    public OnlineCommandsResponse getOnlineCommands(int playerId) throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "queue/online-commands/" + playerId), OnlineCommandsResponse.class);
+    }
+
+    public OfflineCommandsResponse getOfflineCommands() throws IOException, InterruptedException {
+        return GSON.fromJson(http(Verb.GET, "queue/offline-commands"), OfflineCommandsResponse.class);
+    }
+
+    public void deleteCompletedCommands(ConcurrentHashMap<Integer, QueuedCommand> completedCommands) throws IOException, InterruptedException {
+        // build payload, {"ids": [1,2,3,4,...]} array of int command ids to delete
+        if (completedCommands.isEmpty()) {
+            return; // do nothing if there's no commands to report
+        }
+
+        int[] completedIds = new int[completedCommands.size()];
+        var iter = completedCommands.elements().asIterator();
+        var i = 0;
+        while (iter.hasNext()) {
+            completedIds[i] = iter.next().getId();
+            i++;
+        }
+
+        var payload = new DeleteCommandsRequest(completedIds);
+        http(Verb.DELETE, "queue", payload); // response would be blank, 204 no content
+        plugin.debug("Deleted " + completedIds.length + " completed commands.");
+        completedCommands.clear();
+    }
+
+    /**
+     * Helper for plugin API requests. See {@link #http(Verb, String, Object)}
+     */
+    private String http(Verb verb, String endpoint) throws IOException, InterruptedException {
+        return http(verb, endpoint, null);
+    }
+
+    /**
+     * Helper to send an http request to the plugin API.
+     *
+     * @param verb     GET, POST, PUT, DELETE
+     * @param endpoint Endpoint to reach. Leading slashes will be removed
+     * @param data     Optional data which will be serialized to JSON
+     * @return The response as a JSON string.
+     *
+     * @throws IOException          If an I/O error occurs during the request.
+     * @throws InterruptedException If the request is interrupted or canceled.
+     */
+    private String http(Verb verb, String endpoint, @Nullable Object data) throws IOException, InterruptedException {
+        var url = IHttpProvider.formatEndpoint(PLUGIN_API_URL, endpoint);
+        plugin.debug("-> " + verb + " " + url);
+        String resp = plugin.getHttpProvider().request(verb, url, GSON.toJson(data));
+        plugin.debug("<- " + resp);
+        return resp;
+    }
+
+    private static class Responses {
+        public static class CategoriesResponse {
+            @SerializedName("categories")
+            @Getter public List<Category> categories;
+        }
+    }
+}
