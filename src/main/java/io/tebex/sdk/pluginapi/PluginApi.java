@@ -24,13 +24,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PluginApi {
     /** Base url for plugin api requests */
     private static final String PLUGIN_API_URL = "https://plugin.tebex.io/";
+    private static final String PLUGIN_LOGS_URL = "https://plugin-logs.tebex.io/";
 
     /** GSON formatter to generate JSON */
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().setDateFormat("yyyy-MM-dd HH:mm:ss")
+    public static final Gson GSON = new GsonBuilder().setDateFormat("yyyy-MM-dd HH:mm:ss")
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES).create();
 
     /** Interface for telling a plugin what to do */
     private final IPluginAdapter plugin;
+
+    public PluginApi(IPluginAdapter plugin) {
+        this.plugin = plugin;
+    }
 
     public PluginApi(IPluginAdapter plugin, String secretKey) {
         this.plugin = plugin;
@@ -96,6 +101,30 @@ public class PluginApi {
     }
 
     /**
+     * Submit plugin events (logs) to the plugin logs system
+     * @param events List of plugin events to submit
+     */
+    public void submitPluginEvents(List<PluginEvent> events) throws IOException, InterruptedException {
+        if (events.isEmpty()) {
+            return;
+        }
+        httpLogs(Verb.POST, "events", events);
+        plugin.debug("Submitted " + events.size() + " plugin events.");
+    }
+
+    /**
+     * Submit server events (join/leave) to the analytics system
+     * @param events List of server events to submit
+     */
+    public void submitServerEvents(List<ServerEvent> events) throws IOException, InterruptedException {
+        if (events.isEmpty()) {
+            return;
+        }
+        http(Verb.POST, "analytics", events);
+        plugin.debug("Submitted " + events.size() + " server events.");
+    }
+
+    /**
      * Helper for plugin API requests. See {@link #http(Verb, String, Object)}
      */
     private String http(Verb verb, String endpoint) throws IOException, InterruptedException {
@@ -115,7 +144,23 @@ public class PluginApi {
      */
     private String http(Verb verb, String endpoint, @Nullable Object data) throws IOException, InterruptedException {
         var url = IHttpProvider.formatEndpoint(PLUGIN_API_URL, endpoint);
-        plugin.debug("-> " + verb + " " + url);
+        if (data != null) {
+            plugin.debug("-> " + verb + " " + url + " " + GSON.toJson(data));
+        } else {
+            plugin.debug("-> " + verb + " " + url);
+        }
+        String resp = plugin.getHttpProvider().request(verb, url, GSON.toJson(data));
+        plugin.debug("<- " + resp);
+        return resp;
+    }
+
+    private String httpLogs(Verb verb, String endpoint, @Nullable Object data) throws IOException, InterruptedException {
+        var url = IHttpProvider.formatEndpoint(PLUGIN_LOGS_URL, endpoint);
+        if (data != null) {
+            plugin.debug("-> " + verb + " " + url + " " + GSON.toJson(data));
+        } else {
+            plugin.debug("-> " + verb + " " + url);
+        }
         String resp = plugin.getHttpProvider().request(verb, url, GSON.toJson(data));
         plugin.debug("<- " + resp);
         return resp;

@@ -1,8 +1,9 @@
 {
   "Group": "Tebex",
   "Name": "Tebex-Hytale",
-  "Version": "0.0.1",
-  "Description": "Monetize your Hytale server with Tebex! Create feature-rich stores and deliver packages as game server commands.",
+  "Version": "${VERSION}",
   "Website": "https://tebex.io/",
-  "Main": "io.tebex.hytale.plugin.TebexPlugin"
+  "Main": "io.tebex.hytale.plugin.TebexPlugin",
+  "Description": "Monetize your Hytale server with Tebex! Create feature-rich stores and deliver packages as game server commands.",
+  "ServerVersion": "*"
 }

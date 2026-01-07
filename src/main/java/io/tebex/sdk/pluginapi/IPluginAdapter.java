@@ -17,8 +17,6 @@ public interface IPluginAdapter {
 
     boolean isDebugModeEnabled();
 
-    void tellPlayer(String userId, String message);
-
     String getVersion();
 
     void debug(String message);

@@ -45,6 +45,12 @@ public final class JdkHttpProvider implements IHttpProvider {
         for (var customHeader : getCustomHeaders().entrySet()) {
             req.header(customHeader.getKey(), customHeader.getValue());
         }
-        return client.send(req.build(), HttpResponse.BodyHandlers.ofString()).body();
+
+        // raise exception if non-OK response
+        var resp = client.send(req.build(), HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+            throw new IOException("Request failed with response code " + resp.statusCode() + ": " + resp.body());
+        }
+        return resp.body();
     }
 }

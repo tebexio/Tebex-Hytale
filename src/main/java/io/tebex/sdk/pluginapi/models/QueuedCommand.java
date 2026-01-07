@@ -19,15 +19,8 @@ public class QueuedCommand {
         if (player != null) {
             parsedCommand = parsedCommand.replace("{username}", player.getName());
             parsedCommand = parsedCommand.replace("{name}", player.getName());
-
-            //FIXME
-//
-//            if (player.getUuid() != null) { // offline servers will return null uuid here as these uuids are not verified
-//                parsedCommand = parsedCommand.replace("{id}", player.getUuid());
-//                parsedCommand = parsedCommand.replace("{uuid}", player.getUuid());
-//            } else { // {id} must still be replaced with username if uuid is not present
-//                parsedCommand = parsedCommand.replace("{id}", player.getName());
-//            }
+            parsedCommand = parsedCommand.replace("{id}", player.getUuid());
+            parsedCommand = parsedCommand.replace("{uuid}", player.getUuid());
         }
 
         return parsedCommand;

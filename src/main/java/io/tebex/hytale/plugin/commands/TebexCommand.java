@@ -1,11 +1,10 @@
 package io.tebex.hytale.plugin.commands;
 
-import com.hypixel.hytale.server.core.command.system.basecommands.CommandCollectionBase;
+import com.hypixel.hytale.server.core.command.system.basecommands.AbstractCommandCollection;
 
-public class TebexCommand extends CommandCollectionBase {
+public class TebexCommand extends AbstractCommandCollection {
     public TebexCommand() {
         super("tebex", "commands.tebex.desc");
-        this.addSubCommand(new TebexHelpCommand());
         this.addSubCommand(new TebexForceCheckCommand());
         this.addSubCommand(new TebexSecretCommand());
         this.addSubCommand(new TebexInfoCommand());
@@ -13,6 +12,5 @@ public class TebexCommand extends CommandCollectionBase {
         this.addSubCommand(new TebexSendLinkCommand());
         this.addSubCommand(new TebexDebugCommand());
         this.addSubCommand(new TebexGoalsCommand());
-        this.addSubCommand(new TebexReloadCommand());
     }
 }

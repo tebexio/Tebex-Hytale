@@ -1,16 +1,21 @@
 package io.tebex.hytale.plugin;
 
-import com.hypixel.hytale.builtin.asseteditor.EditorClient;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
-import com.hypixel.hytale.protocol.WindowType;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.HytaleServer;
+import com.hypixel.hytale.server.core.NameMatching;
 import com.hypixel.hytale.server.core.console.ConsoleSender;
 import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.entity.entities.player.windows.Window;
+import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
 import io.tebex.hytale.plugin.commands.BuyCommand;
 import io.tebex.hytale.plugin.commands.TebexCommand;
@@ -34,7 +39,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 
 public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
-    public static final String VERSION = "0.0.1";
+    public static final String VERSION = "{{VERSION}}";
 
     // tebex apis
     @Getter private PluginApi pluginApi;
@@ -85,13 +90,13 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     protected void start() {
         super.start();
         debug("Tebex has reached the start phase.");
+        pluginApi = new PluginApi(this);
 
         String envSecretKey = System.getenv("TEBEX_SECRET_KEY"); // to auth plugin api FIXME not detected?
         String configSecretKey = this.config != null && config.get() != null ? config.get().getSecretKey() : null;
 
         // authenticate store with game server secret key, required
         String secretKey = envSecretKey != null ? envSecretKey : configSecretKey;
-        secretKey = "ea029815ffef9bf44990409212c72d1eaebe400a"; //FIXME testing key
         if (secretKey == null || secretKey.isBlank()) {
             warnNoLog("No Tebex secret key found.", "Please run /tebex secret <key> to connect Tebex to your store.");
             this.shutdown();
@@ -99,12 +104,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
 
         // setup the store
+        pluginApi.setSecretKey(secretKey);
         info("Loading Tebex webstore...");
-        pluginApi = new PluginApi(this, secretKey);
         this.refreshServerInfo(); // will set server to null if failed
         if (this.tebexServerInfo == null) {
             warnNoLog("Failed to authenticate with Tebex.", "Please check your secret key and try again.");
-            this.shutdown();
             return;
         }
 
@@ -117,7 +121,14 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 //        }
 
         // send server init on successful start
-        pluginEvents.add(new PluginEvent(this, EnumEventLevel.INFO, "Server init").onServer(this.tebexServerInfo));
+        pluginEvents.add(PluginEvent.logLine(EnumEventLevel.INFO, "Server init").onStore(this.tebexServerInfo));
+
+        // start the scheduled tasks
+        setupTasks();
+    }
+
+    public void setupTasks() {
+        debug("setting up tasks...");
 
         // if this is a restart, we might have scheduled tasks pending, shut them down
         if (tasks != null) {
@@ -135,8 +146,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             // check trigger for the command queue
             // this will check if it's okay to trigger the next queue check. based on received next_check the delay between
             // requests might change, so this runnable is responsible for the preliminary check and trigger if at check time or beyond
-            if (System.currentTimeMillis() > nextCheckQueue) {
-                nextCheckQueue = performCheck();
+            if (System.currentTimeMillis() >= nextCheckQueue) {
+                int nextCheckWaitSeconds = performCheck();
+                nextCheckQueue = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(nextCheckWaitSeconds);
             }
         }, 0 ,10, TimeUnit.SECONDS); // run now, and repeat every 10 seconds
 
@@ -155,7 +167,6 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 nextSendServerEvents = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
             }
         }, 10, 10, TimeUnit.SECONDS); // run now, repeat check every 10 seconds
-
     }
 
     private void registerCommands() {
@@ -175,11 +186,39 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     private void handlePlayerEvents() {
+        if (tebexServerInfo == null) { // don't send events for non-connected stores
+            return;
+        }
 
+        if (serverEvents.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<ServerEvent> eventsToSubmit = new ArrayList<>(serverEvents);
+            pluginApi.submitServerEvents(eventsToSubmit);
+            serverEvents.clear();
+        } catch (Exception e) {
+            error("Failed to submit player events to analytics system", e);
+        }
     }
 
     private void handlePluginEvents() {
+        if (tebexServerInfo == null) { // don't send events for non-connected stores
+            return;
+        }
 
+        if (pluginEvents.isEmpty()) {
+            return;
+        }
+
+        try {
+            List<PluginEvent> eventsToSubmit = new ArrayList<>(pluginEvents);
+            pluginApi.submitPluginEvents(eventsToSubmit);
+            pluginEvents.clear();
+        } catch (Exception e) {
+            error("Failed to submit plugin events to logs system", e);
+        }
     }
 
     public void refreshServerInfo() {
@@ -203,8 +242,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 
-    // @return next_check
-    public long performCheck() {
+    // @return seconds to wait until we can check again
+    public int performCheck() {
         debug("checking queue...");
 
         // offline commands can be run immediately so check those first
@@ -218,7 +257,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 }
 
                 try {
-                    debug(String.format("Executing offline command '%s' on %s...", cmd.getCommand(), cmd.getPlayer().getName()));
+                    info(String.format("Executing offline command '%s' on %s...", cmd.getCommand(), cmd.getPlayer().getName()));
                     var success = executeCommand(cmd);
                     if (!success) {
                         warn(String.format("Offline command '%s' could not be executed on %s", cmd.getCommand(), cmd.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
@@ -235,11 +274,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             error("Unexpected error while getting offline commands: ", e);
         }
 
+        var nextCheck = 120;
         // now try to get and run online commands
         try {
             debug("retrieving online commands...");
             var commandQueueResponse = pluginApi.getCommandQueue();
-            for (QueuedPlayer player : commandQueueResponse.getPlayers()) {
+            for (QueuedPlayer player : commandQueueResponse.getMeta().getPlayers()) {
                 try {
                     // make sure player is online before we make a request to get their commands
                     if (!isPlayerOnline(player.getName())) {
@@ -255,18 +295,34 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                             continue;
                         }
 
-                        // check command conditions
-                        if (!playerHasInventorySlotsAvailable(player, onlineCommand.getRequiredSlots())) {
-                            warn(String.format("Player " + player.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
-                                onlineCommand.getCommand(), onlineCommand.getRequiredSlots()), "We will try again at the next queue check.");
-                            continue;
+                        // check command conditions - check inventory slots before applying the command
+                        Integer requiredSlots = onlineCommand.getRequiredSlots();
+                        if (requiredSlots != null && requiredSlots > 0) {
+                            if (!playerHasInventorySlotsAvailable(player, requiredSlots)) {
+                                warn(String.format("Player " + player.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
+                                    onlineCommand.getCommand(), requiredSlots), "We will try again at the next queue check.");
+                                continue;
+                            }
                         }
 
                         // commands might have a delay, so we either schedule execution in the future or execute immediately
                         if (onlineCommand.getDelay() > 0) {
-                            //TODO implement delays
+                            info(String.format(
+                                    "Scheduling online command '%s' on %s to run in %d seconds...",
+                                    onlineCommand.getCommand(),
+                                    player.getName(),
+                                    onlineCommand.getDelay()
+                            ));
+
+                            ScheduledFuture<?> future = tasks.schedule(() -> {
+                                info(String.format("Executing scheduled online command '%s' on %s...", onlineCommand.getCommand(), player.getName()));
+                                boolean success = executeCommand(onlineCommand);
+                                if (!success) {
+                                    warn(String.format("Scheduled online command '%s' could not be executed on %s", onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                                }
+                            }, onlineCommand.getDelay(), TimeUnit.SECONDS);
                         } else { // no delay, execute now
-                            debug(String.format("Executing online command '%s' on %s...", onlineCommand.getCommand(), player.getName()));
+                            info(String.format("Executing online command '%s' on %s...", onlineCommand.getCommand(), player.getName()));
                             var success = executeCommand(onlineCommand);
                             if (!success) {
                                 warn(String.format("Online command '%s' could not be executed on %s", onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
@@ -282,10 +338,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 }
             }
 
-            long nextCheck = commandQueueResponse.getNextCheck() * 1000L; // in seconds, convert to milliseconds
-            nextCheck += System.currentTimeMillis();
-            debug("next check at " + nextCheck);
-            return nextCheck;
+            nextCheck = commandQueueResponse.getMeta().getNextCheck();
+            debug("next check after " + nextCheck + " seconds");
+
         } catch (Exception e) {
             error("Unexpected error retrieving online commands: ", e);
         }
@@ -297,15 +352,17 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             error("Unexpected error while deleting completed commands! This can result in duplicated deliveries!: " + e.getMessage(), e);
         }
 
-        return System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(2); // default every 2 minutes if something went wrong
+        return nextCheck;
     }
 
     @Override
     protected void shutdown() {
         super.shutdown();
-        debug("Shutting down Tebex");
+        debug("Shutting down Tebex plugin");
         this.tebexServerInfo = null;
-        this.tasks.shutdownNow();
+        if (this.tasks != null) {
+            this.tasks.shutdownNow();
+        }
         this.packagesCache.clear();
         this.categoriesCache.clear();
         this.communityGoalsCache.clear();
@@ -334,39 +391,123 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public void warn(String message, String solution) {
         this.getLogger().at(Level.WARNING).log("[Tebex] " + message);
         this.getLogger().at(Level.WARNING).log("[Tebex] " + solution);
-        pluginEvents.add(new PluginEvent(this, EnumEventLevel.WARNING, message + " " + solution).onServer(this.tebexServerInfo));
+        pluginEvents.add(PluginEvent.logLine(EnumEventLevel.WARNING, message + " " + solution).onStore(this.tebexServerInfo));
     }
 
     public void error(String message, Throwable throwable) {
         this.getLogger().at(Level.SEVERE).withCause(throwable).log("[Tebex] " + message);
-        pluginEvents.add(new PluginEvent(this, EnumEventLevel.ERROR, message).withTrace(throwable).onServer(this.tebexServerInfo));
+        pluginEvents.add(PluginEvent.logLine(EnumEventLevel.ERROR, message).withTrace(throwable).onStore(this.tebexServerInfo));
     }
 
     @Override
     public boolean playerHasInventorySlotsAvailable(QueuedPlayer player, int slots) {
-        return false;
+        if (slots <= 0) {
+            return true; // no slot requirement
+        }
+
+        try {
+            PlayerRef playerRef = findPlayerByName(player.getName());
+            if (playerRef == null) {
+                return false; // player not found
+            }
+
+            Ref<EntityStore> ref = playerRef.getReference();
+            if (ref == null || !ref.isValid()) {
+                return false; // player reference invalid
+            }
+
+            Store<EntityStore> store = ref.getStore();
+            Player playerComponent = store.getComponent(ref, Player.getComponentType());
+            if (playerComponent == null) {
+                return false; // player component not found
+            }
+
+            ItemContainer inventory = playerComponent.getInventory().getCombinedEverything();
+            int availableSlots = 0;
+            short totalSlots = inventory.getCapacity();
+            for (short i = 0; i < totalSlots; i++) {
+                if (inventory.getItemStack(i) == null || inventory.getItemStack(i).isEmpty()) {
+                    availableSlots++;
+                }
+            }
+
+            return availableSlots >= slots;
+        } catch (Exception e) {
+            error("Error checking inventory slots for player " + player.getName(), e);
+            return false;
+        }
     }
 
     @Override
     public boolean executeCommand(QueuedCommand command) {
-        var commandSender = ConsoleSender.INSTANCE;
-        HytaleServer.get().getCommandManager().handleCommand(commandSender, command.getCommand());
-        return true;
+        try {
+            String parsedCommand = command.getParsedCommand();
+            
+            // If command is for a specific player and they're online, execute as that player
+            if (command.getPlayer() != null && command.isOnline()) {
+                PlayerRef playerRef = findPlayerByName(command.getPlayer().getName());
+                if (playerRef == null) {
+                    warn("Player not found: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    return false;
+                }
+                Ref<EntityStore> storeRef = playerRef.getReference();
+                if (storeRef == null || !storeRef.isValid()) {
+                    warn("Player reference invalid: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    return false;
+                }
+
+                Store<EntityStore> store = storeRef.getStore();
+                Player playerComponent = store.getComponent(storeRef, Player.getComponentType());
+                if (playerComponent == null) {
+                    warn("Player component not found: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    return false;
+                }
+
+                // Execute command on the player as the console
+                World world = ((EntityStore) store.getExternalData()).getWorld();
+                world.execute(() -> {
+                    HytaleServer.get().getCommandManager().handleCommand(ConsoleSender.INSTANCE, parsedCommand);
+                });
+                return true;
+            }
+
+            // Fallback for offline commands or if player not present
+            var commandSender = ConsoleSender.INSTANCE;
+            HytaleServer.get().getCommandManager().handleCommand(commandSender, parsedCommand);
+            return true;
+        } catch (Exception e) {
+            error("Error executing command: " + command.getCommand(), e);
+            return false;
+        }
     }
 
     @Override
     public boolean isPlayerOnline(String username) {
-//        Player playerComponent = (Player)store.getComponent(ref, Player.getComponentType());
-//
-//        assert playerComponent != null;
-//
-//        PlayerRef targetPlayerRef = (PlayerRef)this.targetPlayerArg.get(context);
-//        Ref<EntityStore> targetRef = targetPlayerRef.getReference();
-//        if (targetRef != null && targetRef.isValid()) {
-//        } else {
-//            context.sendMessage(MESSAGE_COMMANDS_ERRORS_PLAYER_NOT_IN_WORLD);
-//        }
-        return false;
+        try {
+            PlayerRef playerRef = findPlayerByName(username);
+            return playerRef != null && playerRef.getReference().isValid();
+        } catch (Exception e) {
+            debug("Error checking if player is online: " + username + " - " + e.getMessage());
+            return false;
+        }
+    }
+
+    @Nullable
+    private PlayerRef findPlayerByName(String username) {
+        try {
+            Universe universe = Universe.get();
+            if (universe == null) {
+                return null;
+            }
+            var player = universe.getPlayerByUsername(username, NameMatching.EXACT);
+            if (player == null) {
+                warn("Player not found: " + username, "Please check the username and try again.");
+            }
+            return player;
+        } catch (Exception e) {
+            debug("Error finding player by name: " + username + " - " + e.getMessage());
+        }
+        return null;
     }
 
     @Override
@@ -390,10 +531,6 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Override
-    public void tellPlayer(String userId, String message) {
-    }
-
-    @Override
     public String getVersion() {
         return VERSION;
     }
@@ -405,6 +542,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         private @Nonnull String secretKey = "";
         private boolean buyCommandEnabled = true;
         private boolean debugMode = false;
+        private String buyCommandMessage = "Buy packages at {url}";
         private String buyCommandName = "buy";
 
         static {
@@ -417,6 +555,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                             TebexConfig::setBuyCommandEnabled, TebexConfig::isBuyCommandEnabled).add()
                     .append(new KeyedCodec<Boolean>("DebugMode", Codec.BOOLEAN),
                             TebexConfig::setDebugMode, TebexConfig::isDebugMode).add()
+                    .append(new KeyedCodec<String>("BuyCommandMessage", Codec.STRING),
+                            TebexConfig::setBuyCommandMessage, TebexConfig::getBuyCommandMessage).add()
                     .build();
 
         }

@@ -2,20 +2,14 @@ package io.tebex.hytale.plugin.commands;
 
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
-import com.hypixel.hytale.protocol.Page;
+
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
+import com.hypixel.hytale.server.core.command.system.CommandUtil;
 import com.hypixel.hytale.server.core.command.system.arguments.system.RequiredArg;
 import com.hypixel.hytale.server.core.command.system.arguments.types.ArgTypes;
-import com.hypixel.hytale.server.core.command.system.basecommands.CommandBase;
-import com.hypixel.hytale.server.core.command.system.basecommands.PlayerCommandBase;
+import com.hypixel.hytale.server.core.command.system.basecommands.AbstractPlayerCommand;
 import com.hypixel.hytale.server.core.entity.entities.Player;
-import com.hypixel.hytale.server.core.entity.entities.player.windows.ContainerWindow;
-import com.hypixel.hytale.server.core.entity.entities.player.windows.Window;
-import com.hypixel.hytale.server.core.inventory.container.CombinedItemContainer;
-import com.hypixel.hytale.server.core.inventory.container.DelegateItemContainer;
-import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
-import com.hypixel.hytale.server.core.inventory.container.filter.FilterType;
 import com.hypixel.hytale.server.core.permissions.HytalePermissions;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
@@ -24,9 +18,8 @@ import io.tebex.hytale.plugin.TebexPlugin;
 import io.tebex.sdk.pluginapi.models.requests.CheckoutRequest;
 
 import javax.annotation.Nonnull;
-import java.io.IOException;
 
-public class TebexSendLinkCommand extends PlayerCommandBase {
+public class TebexSendLinkCommand extends AbstractPlayerCommand {
     private final RequiredArg<PlayerRef> targetPlayerArg;
     private final RequiredArg<Integer> targetPackageArg;
 
@@ -39,6 +32,8 @@ public class TebexSendLinkCommand extends PlayerCommandBase {
 
     @Override
     protected void execute(@Nonnull CommandContext ctx, @Nonnull Store<EntityStore> store, @Nonnull Ref<EntityStore> ref, @Nonnull PlayerRef playerRef, @Nonnull World world) {
+        CommandUtil.requirePermission(ctx.sender(), HytalePermissions.fromCommand("tebex.sendlink"));
+
         if (plugin.getTebexServerInfo() == null) {
             ctx.sendMessage(Message.raw("Tebex is not setup!"));
             return;
@@ -64,10 +59,10 @@ public class TebexSendLinkCommand extends PlayerCommandBase {
                     ctx.sendMessage(Message.raw("Target player was not found!"));
                 } else {
                     // send the checkout link to the player
-                    var req = new CheckoutRequest();
+                    var req = new CheckoutRequest(targetPlayerArg.getName(), targetPackageArg.get(ctx));
                     try {
                         var url = plugin.getPluginApi().checkout(req);
-                        targetPlayerComponent.sendMessage(Message.raw(ctx.senderAsPlayer().getDisplayName() + " has sent you a checkout link:"));
+                        targetPlayerComponent.sendMessage(Message.raw(ctx.sender().getDisplayName() + " has sent you a checkout link:"));
                         targetPlayerComponent.sendMessage(Message.raw("Buy " + pack.getName() + " by clicking here: " + url).link(url.getUrl()));
                     } catch (Exception e) {
                         ctx.sendMessage(Message.raw("An unexpected error occurred while checking out the target player!"));

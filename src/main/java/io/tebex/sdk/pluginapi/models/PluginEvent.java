@@ -1,88 +1,82 @@
 package io.tebex.sdk.pluginapi.models;
 
-import com.google.gson.Gson;
 import com.google.gson.annotations.SerializedName;
+import com.hypixel.hytale.server.core.HytaleServer;
+import io.tebex.hytale.plugin.TebexPlugin;
 import io.tebex.sdk.pluginapi.IPluginAdapter;
+import io.tebex.sdk.pluginapi.PluginApi;
+import lombok.Data;
 
 import javax.annotation.Nullable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * A PluginEvent is an indicator of a runtime event that is reported to Tebex. This encapsulates telemetry information
  *  about warnings and errors that occur during runtime.
  */
+@Data
 public class PluginEvent {
+    private transient IPluginAdapter plugin = TebexPlugin.get();
+
     @SerializedName(value = "game_id")
-    private String gameId;
+    private String gameId = "hytale";
     @SerializedName(value = "framework_id")
-    private String frameworkId;
+    private String frameworkId = "hytale";
     @SerializedName(value = "runtime_version")
-    private String runtimeVersion;
+    private String runtimeVersion = Runtime.version().toString();
     @SerializedName(value = "framework_version")
-    private String frameworkVersion;
+    private String frameworkVersion = "latest"; //TODO
     @SerializedName(value = "plugin_version")
-    private String pluginVersion;
-    @SerializedName(value = "store_id")
-    private String storeId;
-    @SerializedName(value = "store_name")
-    private String storeName;
-    @SerializedName(value = "server_id")
-    private String serverId;
+    private String pluginVersion = plugin.getVersion();
     @SerializedName(value = "event_message")
     private String eventMessage;
     @SerializedName(value = "event_level")
     private EnumEventLevel eventLevel;
+    @SerializedName(value = "server_id")
+    private String serverId;
+    @SerializedName(value = "server_ip")
+    private String serverIp;
+    @SerializedName(value = "store_url")
+    private String storeUrl;
     @SerializedName(value = "metadata")
-    private Map<String, String> metadata;
+    private String metadata;
     @SerializedName(value = "trace")
     private String trace;
 
-    private transient IPluginAdapter plugin;
-    public PluginEvent(IPluginAdapter plugin, EnumEventLevel level, String message) {
-        this.plugin = plugin;
-        //FIXME
-//        PlatformTelemetry tel = platform.getTelemetry();
-//
-//        this.gameId = "Minecraft";                                  // always Minecraft
-//        this.frameworkId = tel.getServerSoftware();                 // name of the platform software, Bukkit, Spigot, etc.
-//        this.runtimeVersion = "Java " + tel.getJavaVersion();       // version of Java
-//        this.frameworkVersion = tel.getServerVersion();             // version of Bukkit, Spigot, etc.
-//        this.pluginVersion = platform.getPluginVersion();
-//        this.eventLevel = level;
-//        this.eventMessage = message;
-//        this.trace = "";
-//
-//        if (platform.isSetup()) {
-//            this.serverId = String.valueOf(platform.getStoreServer().getId());
-//            this.storeId = String.valueOf(platform.getStore().getId());
-//        }
+    public static PluginEvent logLine(@Nullable EnumEventLevel level, String message) {
+        PluginEvent event = new PluginEvent();
+        event.eventLevel = level;
+        event.eventMessage = message;
+        return event;
     }
 
-    public PluginEvent onServer(@Nullable ServerInformation server) {
-        if (server == null) {
+    public PluginEvent onStore(@Nullable ServerInformation info) {
+        if (info == null) {
             return this;
         }
 
-        this.serverId = String.valueOf(server.getServer().getId());
-        this.storeId = String.valueOf(server.getStore().getId());
-        this.storeName = server.getStore().getName();
+        this.serverId = String.valueOf(info.getServer().getId());
         this.pluginVersion = plugin.getVersion();
+
+        if (this.metadata == null) {
+            this.metadata = "";
+        }
+        var meta = new HashMap<String, String>();
+        meta.put("server_name", info.getServer().getName());
+        meta.put("store_name", info.getStore().getName());
+        meta.put("store_id", String.valueOf(info.getStore().getId()));
+        metadata = PluginApi.GSON.toJson(meta);
         return this;
     }
 
     public PluginEvent withTrace(Throwable t) {
         StringWriter traceWriter = new StringWriter();
-        t.printStackTrace(); // show trace in the console whenever one is provided
         t.printStackTrace(new PrintWriter(traceWriter)); // also write to our var for reporting
         this.trace = traceWriter.toString();
         this.eventMessage = t.getMessage();
         return this;
-    }
-
-    public String toJsonString() {
-        Gson gson = new Gson();
-        return gson.toJson(this);
     }
 }
