@@ -3,7 +3,7 @@
 
 set -e # exit on any failure
 
-./gradlew build
+./gradlew clean build
 
 # macos, assumes a mounted volume like so where the Hytale server is installed
 rm -f /Volumes/Hytale/install/release/package/game/latest/Server/mods/Tebex-Hytale*.jar

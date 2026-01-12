@@ -23,7 +23,7 @@ COPY gradlew ./gradlew
 COPY gradle/ ./gradle/
 
 # Run gradle build
-RUN ./gradlew build
+RUN ./gradlew clean build
 
 # Expose build output
 FROM debian:stable-slim AS artifact

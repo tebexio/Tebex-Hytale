@@ -36,9 +36,7 @@ import lombok.Setter;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 
@@ -54,11 +52,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Setter private long nextCheckQueue;
     private long nextSendPlayerEvents;
     private long nextSendServerEvents;
-    private final List<PluginEvent> pluginEvents = new ArrayList<>();
-    private final List<ServerEvent> serverEvents = new ArrayList<>();
-    @Getter private final Map<Integer, Category> categoriesCache = new HashMap<>();
-    @Getter private final Map<Integer, Package> packagesCache = new HashMap<>();
-    @Getter private List<CommunityGoal> communityGoalsCache = new ArrayList<>();
+    private final CopyOnWriteArrayList<PluginEvent> pluginEvents = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<ServerEvent> serverEvents = new CopyOnWriteArrayList<>();
+    @Getter private final ConcurrentHashMap<Integer, Category> categoriesCache = new ConcurrentHashMap<>();
+    @Getter private final ConcurrentHashMap<Integer, Package> packagesCache = new ConcurrentHashMap<>();
+    @Getter private CopyOnWriteArrayList<CommunityGoal> communityGoalsCache = new CopyOnWriteArrayList<>();
     private final ConcurrentHashMap<Integer, QueuedCommand> completedCommands = new ConcurrentHashMap<>();
 
     private ScheduledExecutorService tasks;
@@ -261,7 +259,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             pluginApi.getCategories().forEach(c -> {
                 categoriesCache.put(c.getId(), c);
             });
-            communityGoalsCache = pluginApi.getCommunityGoals();
+            communityGoalsCache = new CopyOnWriteArrayList<>(pluginApi.getCommunityGoals());
             debug("Packages: " + packagesCache.size() + ", Categories: " + categoriesCache.size() + ", Community Goals: " + communityGoalsCache.size());
             this.tebexServerInfo = serverInfo;
         } catch (Exception e) {
