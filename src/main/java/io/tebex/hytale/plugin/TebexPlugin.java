@@ -9,6 +9,8 @@ import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.NameMatching;
 import com.hypixel.hytale.server.core.console.ConsoleSender;
 import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
+import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent;
 import com.hypixel.hytale.server.core.inventory.container.ItemContainer;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
@@ -85,6 +87,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         super.setup();
         debug("Tebex has reached the setup phase.");
         registerCommands();
+        registerEvents();
     }
 
     // the start phase is run after setup, late in the startup process, just before the "Hytale Server Booted!" splash
@@ -194,6 +197,20 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 
+    private void registerEvents() {
+        this.getEventRegistry().register(PlayerConnectEvent.class, connection -> {
+            this.serverEvents.add(new ServerEvent(
+                    connection.getPlayerRef().getUuid().toString(),
+                    connection.getPlayerRef().getUsername(),
+                    "127.0.0.1", ServerEvent.EnumServerEventType.JOIN)); //TODO player ip
+        });
+        this.getEventRegistry().register(PlayerDisconnectEvent.class, connection -> {
+            this.serverEvents.add(new ServerEvent(
+                    connection.getPlayerRef().getUuid().toString(),
+                    connection.getPlayerRef().getUsername(),
+                    "127.0.0.1", ServerEvent.EnumServerEventType.LEAVE)); //TODO player ip
+        });
+    }
     private void handlePlayerEvents() {
         if (tebexServerInfo == null) { // don't send events for non-connected stores
             return;
@@ -208,7 +225,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             pluginApi.submitServerEvents(eventsToSubmit);
             serverEvents.clear();
         } catch (Exception e) {
-            error("Failed to submit player events to analytics system", e);
+            error("Failed to submit player events to analytics", e);
         }
     }
 
