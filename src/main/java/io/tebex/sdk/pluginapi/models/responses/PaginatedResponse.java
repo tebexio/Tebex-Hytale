@@ -1,14 +1,10 @@
 package io.tebex.sdk.pluginapi.models.responses;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.ToString;
+import lombok.Data;
 
 import java.util.List;
 
-@Getter
-@AllArgsConstructor
-@ToString
+@Data
 public class PaginatedResponse<T> {
     private final Pagination pagination;
     private final List<T> data;

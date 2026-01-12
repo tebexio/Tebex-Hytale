@@ -5,8 +5,6 @@ import io.tebex.sdk.pluginapi.models.QueuedPlayer;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
-import javax.annotation.Nullable;
-import java.util.ArrayList;
 import java.util.List;
 
 @Getter @AllArgsConstructor

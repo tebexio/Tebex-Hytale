@@ -6,8 +6,7 @@ import lombok.Getter;
 
 import java.util.List;
 
-@Getter
-@AllArgsConstructor
+@Getter @AllArgsConstructor
 public class OfflineCommandsResponse {
     private final boolean limited;
     private final List<QueuedCommand> commands;

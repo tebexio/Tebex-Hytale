@@ -6,7 +6,7 @@ import lombok.Data;
 @Data
 public class ServerInformation {
     @SerializedName("account")
-    private final Store store;
+    private final Store account;
     @SerializedName("server")
     private final Server server;
 

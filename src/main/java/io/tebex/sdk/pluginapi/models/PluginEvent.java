@@ -1,7 +1,6 @@
 package io.tebex.sdk.pluginapi.models;
 
 import com.google.gson.annotations.SerializedName;
-import com.hypixel.hytale.server.core.HytaleServer;
 import io.tebex.hytale.plugin.TebexPlugin;
 import io.tebex.sdk.pluginapi.IPluginAdapter;
 import io.tebex.sdk.pluginapi.PluginApi;
@@ -11,7 +10,6 @@ import javax.annotation.Nullable;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.HashMap;
-import java.util.Map;
 
 /**
  * A PluginEvent is an indicator of a runtime event that is reported to Tebex. This encapsulates telemetry information
@@ -66,8 +64,8 @@ public class PluginEvent {
         }
         var meta = new HashMap<String, String>();
         meta.put("server_name", info.getServer().getName());
-        meta.put("store_name", info.getStore().getName());
-        meta.put("store_id", String.valueOf(info.getStore().getId()));
+        meta.put("store_name", info.getAccount().getName());
+        meta.put("store_id", String.valueOf(info.getAccount().getId()));
         metadata = PluginApi.GSON.toJson(meta);
         return this;
     }
@@ -76,7 +74,7 @@ public class PluginEvent {
         StringWriter traceWriter = new StringWriter();
         t.printStackTrace(new PrintWriter(traceWriter)); // also write to our var for reporting
         this.trace = traceWriter.toString();
-        this.eventMessage = t.getMessage();
+        this.eventMessage = t.getMessage() == null ? t.getClass().getName() : t.getMessage();
         return this;
     }
 }

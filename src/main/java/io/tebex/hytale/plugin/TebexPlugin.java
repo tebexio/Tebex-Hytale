@@ -25,6 +25,8 @@ import io.tebex.sdk.pluginapi.IPluginAdapter;
 import io.tebex.sdk.pluginapi.PluginApi;
 import io.tebex.sdk.pluginapi.models.*;
 import io.tebex.sdk.pluginapi.models.Package;
+import io.tebex.sdk.pluginapi.models.responses.CommandQueueResponse;
+import io.tebex.sdk.pluginapi.models.responses.OfflineCommandsResponse;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
@@ -52,8 +54,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private long nextSendServerEvents;
     private final List<PluginEvent> pluginEvents = new ArrayList<>();
     private final List<ServerEvent> serverEvents = new ArrayList<>();
-    @Getter private Map<Integer, Category> categoriesCache = new HashMap<>();
-    @Getter private Map<Integer, Package> packagesCache = new HashMap<>();
+    @Getter private final Map<Integer, Category> categoriesCache = new HashMap<>();
+    @Getter private final Map<Integer, Package> packagesCache = new HashMap<>();
     @Getter private List<CommunityGoal> communityGoalsCache = new ArrayList<>();
     private final ConcurrentHashMap<Integer, QueuedCommand> completedCommands = new ConcurrentHashMap<>();
 
@@ -95,7 +97,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         String envSecretKey = System.getenv("TEBEX_SECRET_KEY"); // to auth plugin api FIXME not detected?
         String configSecretKey = this.config != null && config.get() != null ? config.get().getSecretKey() : null;
 
-        // authenticate store with game server secret key, required
+        // authenticate store with the game server secret key, required
         String secretKey = envSecretKey != null ? envSecretKey : configSecretKey;
         if (secretKey == null || secretKey.isBlank()) {
             warnNoLog("No Tebex secret key found.", "Please run /tebex secret <key> to connect Tebex to your store.");
@@ -103,7 +105,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return;
         }
 
-        // setup the store
+        // set up the store
         pluginApi.setSecretKey(secretKey);
         info("Loading Tebex webstore...");
         this.refreshServerInfo(); // will set server to null if failed
@@ -112,13 +114,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return;
         }
 
-        info("Successfully authenticated with " + tebexServerInfo.getStore().getName() + "(" + tebexServerInfo.getStore().getDomain() + ") as " + tebexServerInfo.getServer().getName());
-        //FIXME make sure it's a hytale store, or else shutdown
-//        if (!this.server.getStore().getGameType().equals("hytale")) {
-//            error("This plugin only works with Hytale stores. Please use a game server key associated with a Hytale store.");
-//            this.shutdown();
-//            return;
-//        }
+        info("Successfully authenticated with " + tebexServerInfo.getAccount().getName() + "(" + tebexServerInfo.getAccount().getDomain() + ") as " + tebexServerInfo.getServer().getName());
+        if (!this.tebexServerInfo.getAccount().getGameType().equalsIgnoreCase("hytale")) {
+            error("This plugin only works with Hytale stores. Please use a game server key associated with a Hytale store.", new Throwable("Invalid game server key, a Hytale store is required."));
+            this.shutdown();
+            return;
+        }
 
         // send server init on successful start
         pluginEvents.add(PluginEvent.logLine(EnumEventLevel.INFO, "Server init").onStore(this.tebexServerInfo));
@@ -144,13 +145,13 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         tasks.scheduleWithFixedDelay(this::refreshServerInfo, 15, 15, TimeUnit.MINUTES); // wait 15 minutes first, then repeat every 15 minutes after the last task completes
         tasks.scheduleWithFixedDelay(() -> {
             // check trigger for the command queue
-            // this will check if it's okay to trigger the next queue check. based on received next_check the delay between
+            // this will check if it's okay to trigger the next queue check. based on received next check the delay between
             // requests might change, so this runnable is responsible for the preliminary check and trigger if at check time or beyond
             if (System.currentTimeMillis() >= nextCheckQueue) {
                 int nextCheckWaitSeconds = performCheck();
                 nextCheckQueue = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(nextCheckWaitSeconds);
             }
-        }, 0 ,10, TimeUnit.SECONDS); // run now, and repeat every 10 seconds
+        }, 0 ,1, TimeUnit.SECONDS); // run now, then repeat time check every 1 seconds
 
         tasks.scheduleWithFixedDelay(() -> {
             // check trigger for player joins / leaves. triggers every 1 minute or if joins/leaves exceed 10
@@ -158,7 +159,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 handlePlayerEvents();
                 nextSendPlayerEvents = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
             }
-        }, 10, 10, TimeUnit.SECONDS); // run now, repeat check for trigger every 10 seconds
+        }, 10, 10, TimeUnit.SECONDS); // run now, repeat for trigger every 10 seconds
 
         tasks.scheduleWithFixedDelay(() -> {
             // check trigger for runtime metrics (warning and error logs and traces), triggers every 1 minute or if logs exceed 10
@@ -166,7 +167,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 handlePluginEvents();
                 nextSendServerEvents = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(1);
             }
-        }, 10, 10, TimeUnit.SECONDS); // run now, repeat check every 10 seconds
+        }, 10, 10, TimeUnit.SECONDS); // run now, repeat every 10 seconds
     }
 
     private void registerCommands() {
@@ -225,10 +226,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         try {
             ServerInformation serverInfo = pluginApi.getServerInformation();
             debug("Downloading store info...");
+            packagesCache.clear();
             pluginApi.getPackages().forEach(p -> {
                 packagesCache.put(p.getId(), p);
             });
             var remoteCategories = pluginApi.getCategories();
+            categoriesCache.clear();
             remoteCategories.sort(java.util.Comparator.comparingInt(Category::getOrder));
             pluginApi.getCategories().forEach(c -> {
                 categoriesCache.put(c.getId(), c);
@@ -242,105 +245,163 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 
+    private void handleOfflineCommands() {
+        debug("retrieving offline commands...");
+        OfflineCommandsResponse offlineCommands = null;
+        try {
+            offlineCommands = pluginApi.getOfflineCommands();
+        } catch (Exception ex) {
+            error("Unexpected error while getting offline commands: ", ex);
+            return;
+        }
+
+        for (QueuedCommand offlineCommand : offlineCommands.getCommands()) {
+            // check we haven't already completed this command
+            if (completedCommands.containsKey(offlineCommand.getId())) {
+                continue;
+            }
+
+            // commands might have a delay, so we either will schedule execution in the future or execute immediately
+            if (offlineCommand.getConditions().getDelay() > 0) {
+                info(String.format(
+                        "Scheduling offline command (ID:%d) '%s' on %s to run in %d seconds...",
+                        offlineCommand.getId(),
+                        offlineCommand.getCommand(),
+                        offlineCommand.getPlayer().getName(),
+                        offlineCommand.getConditions().getDelay()
+                ));
+
+                tasks.schedule(() -> {
+                    info(String.format("Executing scheduled offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
+                    boolean success = executeCommand(offlineCommand);
+                    if (!success) {
+                        warn(String.format("Scheduled offline command (ID:%d) '%s' could not be executed on %s", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
+                        return;
+                    }
+                    // for scheduled commands, add immediately to completed and purge
+                    completedCommands.put(offlineCommand.getId(), offlineCommand);
+                    try {
+                        pluginApi.deleteCompletedCommands(completedCommands);
+                    } catch (Exception e) {
+                        error("Unexpected error while flushing completed commands! This can result in duplicated deliveries!: " + e.getMessage(), e);
+                    }
+                }, offlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
+                continue; // command is scheduled, move on to the next
+            }
+
+            // no delay, execute this command now
+            try {
+                info(String.format("Executing offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
+                var success = executeCommand(offlineCommand);
+                if (!success) {
+                    warn(String.format("Offline command '%s' could not be executed on %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
+                    continue; // process the next command
+                }
+
+                // successful execution, save command for deletion from the queue
+                completedCommands.put(offlineCommand.getId(), offlineCommand);
+            } catch (Exception e) {
+                error(String.format("Unexpected error executing offline command '%s' on player %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), e);
+            }
+        }
+    }
+
+    private int handleOnlineCommands() {
+        debug("retrieving online commands...");
+        CommandQueueResponse commandQueueResponse = null;
+        try {
+            commandQueueResponse = pluginApi.getCommandQueue();
+        } catch (Exception e) {
+            error("Unexpected error retrieving online commands: ", e);
+            return 120;
+        }
+
+        for (QueuedPlayer player : commandQueueResponse.getMeta().getPlayers()) {
+            try {
+                // make sure the player is online before we make a request to get their commands
+                if (!isPlayerOnline(player.getName())) {
+                    debug(String.format("Player %s has commands available but is not online, skipping...", player.getName()));
+                    continue;
+                }
+
+                // player is online, so check for their online commands that are due
+                var onlineCommands = pluginApi.getOnlineCommands(player.getId());
+                for (QueuedCommand onlineCommand : onlineCommands.getCommands()) {
+                    // guard against duplicate executions
+                    if (completedCommands.containsKey(onlineCommand.getId())) {
+                        continue;
+                    }
+
+                    // check command conditions - check inventory slots before applying the command
+                    Integer requiredSlots = onlineCommand.getConditions().getRequiredSlots();
+                    if (requiredSlots != null && requiredSlots > 0) {
+                        if (!playerHasInventorySlotsAvailable(player, requiredSlots)) {
+                            warn(String.format("Player " + player.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
+                                    onlineCommand.getCommand(), requiredSlots), "We will try again at the next queue check.");
+                            continue;
+                        }
+                    }
+
+                    // commands might have a delay, so we either will schedule execution in the future or execute immediately
+                    if (onlineCommand.getConditions().getDelay() > 0) {
+                        info(String.format(
+                                "Scheduling online command (ID: %d) '%s' on %s to run in %d seconds...",
+                                onlineCommand.getId(),
+                                onlineCommand.getCommand(),
+                                player.getName(),
+                                onlineCommand.getConditions().getDelay()
+                        ));
+
+                        tasks.schedule(() -> {
+                            info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
+                            boolean success = executeCommand(onlineCommand);
+                            if (!success) {
+                                warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                                return;
+                            }
+                            // for scheduled commands, add immediately to completed and purge
+                            completedCommands.put(onlineCommand.getId(), onlineCommand);
+                            try {
+                                pluginApi.deleteCompletedCommands(completedCommands);
+                            } catch (Exception e) {
+                                error("Unexpected error while flushing completed commands! This can result in duplicated deliveries!: " + e.getMessage(), e);
+                            }
+                        }, onlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
+                    } else { // no delay, execute now
+                        info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
+                        var success = executeCommand(onlineCommand);
+                        if (!success) {
+                            warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                            continue;
+                        }
+                    }
+
+                    // successful execution, queue the command to be deleted
+                    completedCommands.put(onlineCommand.getId(), onlineCommand);
+                }
+            } catch (Exception e) {
+                error("Unexpected error retrieving online commands for " + player.getName() + "): ", e);
+            }
+        }
+
+        return commandQueueResponse.getMeta().getNextCheck();
+    }
     // @return seconds to wait until we can check again
     public int performCheck() {
         debug("checking queue...");
 
-        // offline commands can be run immediately so check those first
+        // offline commands can be run immediately, so check those first. if any error continue processing online commands
         try {
-            debug("retrieving offline commands...");
-            var offlineCommands = pluginApi.getOfflineCommands();
-            for (QueuedCommand cmd : offlineCommands.getCommands()) {
-                // check we haven't already completed this command
-                if (completedCommands.containsKey(cmd.getId())) {
-                    continue;
-                }
-
-                try {
-                    info(String.format("Executing offline command '%s' on %s...", cmd.getCommand(), cmd.getPlayer().getName()));
-                    var success = executeCommand(cmd);
-                    if (!success) {
-                        warn(String.format("Offline command '%s' could not be executed on %s", cmd.getCommand(), cmd.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
-                        continue;
-                    }
-
-                    // successful execution, save command for deletion from the queue
-                    completedCommands.put(cmd.getId(), cmd);
-                } catch (Exception e) {
-                    error(String.format("Unexpected error executing offline command '%s' on player %s: %s", cmd.getCommand(), cmd.getPlayer().getName()), e);
-                }
-            }
-        } catch (Exception e) { // initial get of the offline commands failed
-            error("Unexpected error while getting offline commands: ", e);
+            handleOfflineCommands();
+        } catch (Exception e) {
+            error("Unexpected error while handling offline commands: ", e);
         }
 
         var nextCheck = 120;
         // now try to get and run online commands
         try {
-            debug("retrieving online commands...");
-            var commandQueueResponse = pluginApi.getCommandQueue();
-            for (QueuedPlayer player : commandQueueResponse.getMeta().getPlayers()) {
-                try {
-                    // make sure player is online before we make a request to get their commands
-                    if (!isPlayerOnline(player.getName())) {
-                        debug(String.format("Player %s has commands available but is not online, skipping...", player.getName()));
-                        continue;
-                    }
-
-                    // player is online, so check for their online commands which are due
-                    var onlineCommands = pluginApi.getOnlineCommands(player.getId());
-                    for (QueuedCommand onlineCommand : onlineCommands.getCommands()) {
-                        // guard against duplicate executions
-                        if (completedCommands.containsKey(onlineCommand.getId())) {
-                            continue;
-                        }
-
-                        // check command conditions - check inventory slots before applying the command
-                        Integer requiredSlots = onlineCommand.getRequiredSlots();
-                        if (requiredSlots != null && requiredSlots > 0) {
-                            if (!playerHasInventorySlotsAvailable(player, requiredSlots)) {
-                                warn(String.format("Player " + player.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
-                                    onlineCommand.getCommand(), requiredSlots), "We will try again at the next queue check.");
-                                continue;
-                            }
-                        }
-
-                        // commands might have a delay, so we either schedule execution in the future or execute immediately
-                        if (onlineCommand.getDelay() > 0) {
-                            info(String.format(
-                                    "Scheduling online command '%s' on %s to run in %d seconds...",
-                                    onlineCommand.getCommand(),
-                                    player.getName(),
-                                    onlineCommand.getDelay()
-                            ));
-
-                            ScheduledFuture<?> future = tasks.schedule(() -> {
-                                info(String.format("Executing scheduled online command '%s' on %s...", onlineCommand.getCommand(), player.getName()));
-                                boolean success = executeCommand(onlineCommand);
-                                if (!success) {
-                                    warn(String.format("Scheduled online command '%s' could not be executed on %s", onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
-                                }
-                            }, onlineCommand.getDelay(), TimeUnit.SECONDS);
-                        } else { // no delay, execute now
-                            info(String.format("Executing online command '%s' on %s...", onlineCommand.getCommand(), player.getName()));
-                            var success = executeCommand(onlineCommand);
-                            if (!success) {
-                                warn(String.format("Online command '%s' could not be executed on %s", onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
-                                continue;
-                            }
-                        }
-
-                        // successful execution, queue the command to be deleted
-                        completedCommands.put(onlineCommand.getId(), onlineCommand);
-                    }
-                } catch (Exception e) {
-                    error("Unexpected error retrieving online commands for " + player.getName() + "): ", e);
-                }
-            }
-
-            nextCheck = commandQueueResponse.getMeta().getNextCheck();
+            nextCheck = handleOnlineCommands();
             debug("next check after " + nextCheck + " seconds");
-
         } catch (Exception e) {
             error("Unexpected error retrieving online commands: ", e);
         }
@@ -426,7 +487,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             int availableSlots = 0;
             short totalSlots = inventory.getCapacity();
             for (short i = 0; i < totalSlots; i++) {
-                if (inventory.getItemStack(i) == null || inventory.getItemStack(i).isEmpty()) {
+                var stack = inventory.getItemStack(i);
+                if (stack == null || stack.isEmpty()) {
                     availableSlots++;
                 }
             }
@@ -443,7 +505,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         try {
             String parsedCommand = command.getParsedCommand();
             
-            // If command is for a specific player and they're online, execute as that player
+            // If command is for a specific player, and they're online, execute on that player
             if (command.getPlayer() != null && command.isOnline()) {
                 PlayerRef playerRef = findPlayerByName(command.getPlayer().getName());
                 if (playerRef == null) {
@@ -464,7 +526,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 }
 
                 // Execute command on the player as the console
-                World world = ((EntityStore) store.getExternalData()).getWorld();
+                World world = (store.getExternalData()).getWorld();
                 world.execute(() -> {
                     HytaleServer.get().getCommandManager().handleCommand(ConsoleSender.INSTANCE, parsedCommand);
                 });
@@ -485,7 +547,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public boolean isPlayerOnline(String username) {
         try {
             PlayerRef playerRef = findPlayerByName(username);
-            return playerRef != null && playerRef.getReference().isValid();
+            return playerRef != null && playerRef.getReference() != null && playerRef.getReference().isValid();
         } catch (Exception e) {
             debug("Error checking if player is online: " + username + " - " + e.getMessage());
             return false;

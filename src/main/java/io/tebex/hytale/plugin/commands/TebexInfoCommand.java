@@ -27,10 +27,10 @@ public class TebexInfoCommand extends CommandBase {
         var info = plugin.getTebexServerInfo();
 
         if (ctx.isPlayer()) {
-            ctx.sendMessage(Message.raw("Click to visit the webstore at " + info.getStore().getDomain()).link(info.getStore().getDomain()));
+            ctx.sendMessage(Message.raw("Click to visit the webstore at " + info.getAccount().getDomain()).link(info.getAccount().getDomain()));
         } else {
             ctx.sendMessage(Message.raw("Plugin version: " + TebexPlugin.VERSION));
-            ctx.sendMessage(Message.raw("Tebex is connected to " + info.getStore().getName() + " (" + info.getStore().getDomain() + ") as " + info.getServer().getName()));
+            ctx.sendMessage(Message.raw("Tebex is connected to " + info.getAccount().getName() + " (" + info.getAccount().getDomain() + ") as " + info.getServer().getName()));
         }
     }
 }

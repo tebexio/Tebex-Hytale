@@ -12,10 +12,6 @@ public interface IHttpProvider {
         return URI.create(baseUrl.concat(endpoint.substring(endpoint.startsWith("/") ? 1 : 0)));
     }
 
-    default String request(Verb method, URI url) throws IOException, InterruptedException {
-        return request(method, url, null);
-    }
-
     Map<String, String> getCustomHeaders();
 
     default void setCustomHeader(String key, String value) {

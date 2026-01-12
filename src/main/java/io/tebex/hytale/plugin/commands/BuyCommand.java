@@ -35,12 +35,12 @@ public class BuyCommand extends AbstractPlayerCommand {
         }
 
         if (message.contains("{url}")) {
-            message = message.replace("{url}", TebexPlugin.get().getTebexServerInfo().getStore().getDomain());
+            message = message.replace("{url}", TebexPlugin.get().getTebexServerInfo().getAccount().getDomain());
             clickable = true;
         }
 
-        if (clickable) { // requested store url, add clickable link
-            ctx.sendMessage(Message.raw(message).link(TebexPlugin.get().getTebexServerInfo().getStore().getDomain()));
+        if (clickable) { // requested store url, add a clickable link
+            ctx.sendMessage(Message.raw(message).link(TebexPlugin.get().getTebexServerInfo().getAccount().getDomain()));
         } else { // basic message
             ctx.sendMessage(Message.raw(message));
         }

@@ -1,13 +1,14 @@
 package io.tebex.sdk.pluginapi.models;
 
 import com.google.gson.annotations.SerializedName;
+import lombok.Data;
 import lombok.Getter;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
-@Getter
+@Data
 public class ServerEvent {
     @SerializedName("username_id")
     private final String uuid;

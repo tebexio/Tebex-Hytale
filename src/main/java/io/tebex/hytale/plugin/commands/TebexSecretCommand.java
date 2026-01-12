@@ -30,7 +30,7 @@ public class TebexSecretCommand extends CommandBase {
         plugin.getConfig().save();
         plugin.refreshServerInfo();
 
-        // make sure the secret key worked by checking if server is non-null
+        // make sure the secret key worked by checking if the server is non-null
         var info = plugin.getTebexServerInfo();
         if (info == null) {
             ctx.sendMessage(Message.raw("Invalid secret key! Double check that it is correct and try again."));
@@ -39,8 +39,8 @@ public class TebexSecretCommand extends CommandBase {
             return;
         }
 
-        // server was successfully authed and info has been set
-        ctx.sendMessage(Message.raw("Successfully connected to " + info.getStore().getName() + " as " + info.getServer().getName()));
+        // the server was successfully authed and info has been set
+        ctx.sendMessage(Message.raw("Successfully connected to " + info.getAccount().getName() + " as " + info.getServer().getName()));
         plugin.getConfig().save();
         plugin.setupTasks();
     }

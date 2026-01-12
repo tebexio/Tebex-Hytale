@@ -2,16 +2,18 @@ package io.tebex.sdk.pluginapi.models;
 
 import lombok.Data;
 
+import javax.annotation.Nullable;
+
 @Data
 public class QueuedCommand {
     private final int id;
     private final String command;
-    private final Integer payment;
-    private final Integer packageId; // may be null
-    private final Integer delay;
-    private final Integer requiredSlots;
+    @Nullable private final Integer payment;
+    @Nullable private final Integer packageId;
+
     private final QueuedPlayer player;
     private final boolean online;
+    private final CommandConditions conditions;
 
     public String getParsedCommand() {
         String parsedCommand = command;

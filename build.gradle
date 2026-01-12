@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    // Local hytale server
+    // Local hytale server jar in libs folder
     implementation files('libs/HytaleServer.jar')
 
     // Lombok

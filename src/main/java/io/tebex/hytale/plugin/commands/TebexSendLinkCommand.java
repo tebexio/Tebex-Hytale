@@ -2,7 +2,6 @@ package io.tebex.hytale.plugin.commands;
 
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
-
 import com.hypixel.hytale.server.core.Message;
 import com.hypixel.hytale.server.core.command.system.CommandContext;
 import com.hypixel.hytale.server.core.command.system.CommandUtil;
@@ -45,16 +44,16 @@ public class TebexSendLinkCommand extends AbstractPlayerCommand {
             return;
         }
 
-        Player playerComponent = (Player)store.getComponent(ref, Player.getComponentType());
+        Player playerComponent = store.getComponent(ref, Player.getComponentType());
         assert playerComponent != null;
 
-        PlayerRef targetPlayerRef = (PlayerRef)this.targetPlayerArg.get(ctx);
+        PlayerRef targetPlayerRef = this.targetPlayerArg.get(ctx);
         Ref<EntityStore> targetRef = targetPlayerRef.getReference();
         if (targetRef != null && targetRef.isValid()) {
             Store<EntityStore> targetStore = targetRef.getStore();
-            World targetWorld = ((EntityStore)targetStore.getExternalData()).getWorld();
+            World targetWorld = (targetStore.getExternalData()).getWorld();
             targetWorld.execute(() -> {
-                Player targetPlayerComponent = (Player)targetStore.getComponent(targetRef, Player.getComponentType());
+                Player targetPlayerComponent = targetStore.getComponent(targetRef, Player.getComponentType());
                 if (targetPlayerComponent == null) {
                     ctx.sendMessage(Message.raw("Target player was not found!"));
                 } else {

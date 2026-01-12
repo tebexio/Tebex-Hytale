@@ -40,17 +40,4 @@ public class Category implements ICategory {
     public List<CategoryPackage> getPackages() {
         return categoryPackages;
     }
-
-    public static Category fromJsonObject(JsonObject jsonObject) {
-        Category category = new Category(
-                jsonObject.get("id").getAsInt(),
-                jsonObject.get("order").getAsInt(),
-                jsonObject.get("name").getAsString(),
-                jsonObject.get("gui_item").getAsString(),jsonObject.has("only_subcategories") && jsonObject.get("only_subcategories").getAsBoolean(),
-                jsonObject.getAsJsonArray("packages").asList().stream().map(item -> CategoryPackage.fromJsonObject(item.getAsJsonObject())).collect(Collectors.toList())
-        );
-
-        category.setSubCategories(jsonObject.getAsJsonArray("subcategories").asList().stream().map(item -> SubCategory.fromJsonObject(item.getAsJsonObject(), category)).collect(Collectors.toList()));
-        return category;
-    }
 }

@@ -23,9 +23,7 @@ public class TebexForceCheckCommand extends CommandBase {
             return;
         }
 
-        ctx.sendMessage(Message.raw("Performing check..."));
-        var nextCheck = plugin.performCheck();
-        plugin.setNextCheckQueue(nextCheck);
-        ctx.sendMessage(Message.raw("Check completed. Next check in " + nextCheck + " seconds."));
+        ctx.sendMessage(Message.raw("Check queued, you will receive a message when the check is complete."));
+        plugin.setNextCheckQueue(System.currentTimeMillis());
     }
 }
