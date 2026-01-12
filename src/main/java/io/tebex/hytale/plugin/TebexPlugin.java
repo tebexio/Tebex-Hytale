@@ -386,7 +386,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
         return commandQueueResponse.getMeta().getNextCheck();
     }
-    // @return seconds to wait until we can check again
+    // @return seconds to wait until we can check again. do NOT call this from anywhere except the main timing trigger loop,
+    // otherwise you risk duplicating commands. if you need to check immediately, set the next check time to the current system time
+    // and it will be picked up when the trigger is next checked (ideally <1 second)
     public int performCheck() {
         debug("checking queue...");
 
