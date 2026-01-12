@@ -94,13 +94,21 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         debug("Tebex has reached the start phase.");
         pluginApi = new PluginApi(this);
 
-        String envSecretKey = System.getenv("TEBEX_SECRET_KEY"); // to auth plugin api FIXME not detected?
+        String envSecretKey = System.getenv("TEBEX_SECRET_KEY"); // to auth plugin api
         String configSecretKey = this.config != null && config.get() != null ? config.get().getSecretKey() : null;
 
         // authenticate store with the game server secret key, required
-        String secretKey = envSecretKey != null ? envSecretKey : configSecretKey;
-        if (secretKey == null || secretKey.isBlank()) {
-            warnNoLog("No Tebex secret key found.", "Please run /tebex secret <key> to connect Tebex to your store.");
+        String secretKey = "";
+        if (envSecretKey != null && !envSecretKey.isBlank()) {
+            info("Using TEBEX_SECRET_KEY environment variable");
+            secretKey = envSecretKey;
+        } else if (configSecretKey != null && !configSecretKey.isBlank()) {
+            info("Using secret key from config.yml");
+            secretKey = configSecretKey;
+        }
+
+        if (secretKey.isBlank()) {
+            warnNoLog("No Tebex secret key is set.", "Please run /tebex secret <key> to connect Tebex to your store, or set the TEBEX_SECRET_KEY environment variable.");
             this.shutdown();
             return;
         }
