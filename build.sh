@@ -1,6 +1,9 @@
 #!/bin/bash
-set -e # exit immediately if any failure
-./gradlew clean build
+# This builds the plugin using the system instead of a container
+
+set -e # exit on any failure
+
+./gradlew build
 
 # macos, assumes a mounted volume like so where the Hytale server is installed
 rm -f /Volumes/Hytale/install/release/package/game/latest/Server/mods/Tebex-Hytale*.jar
