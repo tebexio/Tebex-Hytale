@@ -1,6 +1,7 @@
 package io.tebex.sdk.pluginapi.models;
 
 import com.google.gson.annotations.SerializedName;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;
 
@@ -19,15 +20,19 @@ public class ServerEvent {
     private final String username;
     private final String ip;
 
+    @Getter @AllArgsConstructor
     public enum EnumServerEventType {
-        JOIN, LEAVE
+        JOIN("server.join"),
+        LEAVE("server.leave");
+
+        private final String eventName;
     }
 
     public ServerEvent(String uuid, String username, String ip, EnumServerEventType eventType) {
         this.uuid = uuid;
         this.username = username;
         this.ip = anonymizeIp(ip);
-        this.eventType = eventType.name().toLowerCase();
+        this.eventType = eventType.getEventName();
         this.eventDate = Instant.now()
                 .atZone(ZoneOffset.UTC)
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'"));

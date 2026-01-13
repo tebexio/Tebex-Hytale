@@ -117,7 +117,7 @@ public class PluginApi {
         if (events.isEmpty()) {
             return;
         }
-        httpApi(Verb.POST, "analytics", events);
+        httpApi(Verb.POST, "events", events);
         plugin.debug("Submitted " + events.size() + " server events.");
     }
 
