@@ -6,6 +6,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import io.tebex.sdk.common.Verb;
+import io.tebex.sdk.common.gson.BooleanTypeAdapter;
 import io.tebex.sdk.http.IHttpProvider;
 import io.tebex.sdk.pluginapi.models.*;
 import io.tebex.sdk.pluginapi.models.Package;
@@ -29,8 +30,12 @@ public class PluginApi {
     private static final String PLUGIN_LOGS_URL = "https://plugin-logs.tebex.io/";
 
     /** GSON formatter to generate JSON */
-    public static final Gson GSON = new GsonBuilder().setDateFormat("yyyy-MM-dd HH:mm:ss")
-            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES).create();
+    public static final Gson GSON = new GsonBuilder()
+            .setDateFormat("yyyy-MM-dd HH:mm:ss")
+            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+            .registerTypeAdapter(Boolean.class, new BooleanTypeAdapter())
+            .registerTypeAdapter(boolean.class, new BooleanTypeAdapter())
+            .create();
 
     /** Interface for telling a plugin what to do */
     private final IPluginAdapter plugin;
