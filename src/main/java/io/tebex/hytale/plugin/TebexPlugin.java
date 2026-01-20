@@ -156,7 +156,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             // check trigger for the command queue
             // this will check if it's okay to trigger the next queue check. based on received next check the delay between
             // requests might change, so this runnable is responsible for the preliminary check and trigger if at check time or beyond
-            if (System.currentTimeMillis() >= nextCheckQueue) {
+            if (System.currentTimeMillis() >= nextCheckQueue && getTebexServerInfo() != null) {
                 int nextCheckWaitSeconds = performCheck();
                 nextCheckQueue = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(nextCheckWaitSeconds);
             }
@@ -339,7 +339,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return 120;
         }
 
-        for (QueuedPlayer player : commandQueueResponse.getMeta().getPlayers()) {
+        if (commandQueueResponse.getPlayers().isEmpty()) {
+            debug("There are no online commands due for any players.");
+        }
+
+        for (QueuedPlayer player : commandQueueResponse.getPlayers()) {
             try {
                 // make sure the player is online before we make a request to get their commands
                 if (!isPlayerOnline(player.getName())) {
@@ -586,13 +590,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             if (universe == null) {
                 return null;
             }
-            var player = universe.getPlayerByUsername(username, NameMatching.EXACT);
-            if (player == null) {
-                warn("Player not found: " + username, "Please check the username and try again.");
-            }
-            return player;
+            return universe.getPlayerByUsername(username, NameMatching.EXACT);
         } catch (Exception e) {
-            debug("Error finding player by name: " + username + " - " + e.getMessage());
+            error("Error finding Hytale player by name: " + username, e);
         }
         return null;
     }
