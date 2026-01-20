@@ -83,23 +83,24 @@ public class PluginApi {
     }
 
     public void deleteCompletedCommands(ConcurrentHashMap<Integer, QueuedCommand> completedCommands) throws IOException, InterruptedException {
-        // build payload, {"ids": [1,2,3,4,...]} array of int command ids to delete
-        if (completedCommands.isEmpty()) {
-            return; // do nothing if there are no commands to report
-        }
+        // build payload, {"ids": [1,2,3,4,...]} array of int command ids to delete as a snapshot of the current state of the map
+        Integer[] idsSnapshot = completedCommands.keySet().toArray(new Integer[0]);
+        if (idsSnapshot.length == 0) return;
 
-        int[] completedIds = new int[completedCommands.size()];
-        var iter = completedCommands.elements().asIterator();
-        var i = 0;
-        while (iter.hasNext()) {
-            completedIds[i] = iter.next().getId();
-            i++;
+        int[] completedIds = new int[idsSnapshot.length];
+        for (int i = 0; i < idsSnapshot.length; i++) {
+            completedIds[i] = idsSnapshot[i];
         }
 
         var payload = new DeleteCommandsRequest(completedIds);
-        httpApi(Verb.DELETE, "queue", payload); // response would be blank, 204 no content
+        httpApi(Verb.DELETE, "queue", payload);
+
         plugin.debug("Deleted " + completedIds.length + " completed commands.");
-        completedCommands.clear();
+
+        // remove only what we actually sent
+        for (Integer id : idsSnapshot) {
+            completedCommands.remove(id);
+        }
     }
 
     /**
