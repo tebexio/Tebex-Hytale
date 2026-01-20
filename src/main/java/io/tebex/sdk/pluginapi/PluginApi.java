@@ -93,7 +93,7 @@ public class PluginApi {
         }
 
         var payload = new DeleteCommandsRequest(completedIds);
-        httpApi(Verb.DELETE, "queue", payload);
+        httpApi(Verb.DELETE, "queue", payload); // response would be blank, 204 no content
 
         plugin.debug("Deleted " + completedIds.length + " completed commands.");
 
@@ -155,12 +155,15 @@ public class PluginApi {
 
     private String request(Verb verb, String base, String endpoint, @Nullable Object data) throws IOException, InterruptedException {
         var url = IHttpProvider.formatEndpoint(base, endpoint);
+        var resp = "";
         if (data != null) {
             plugin.debug("-> " + verb + " " + url + " " + GSON.toJson(data));
+            resp = plugin.getHttpProvider().request(verb, url, GSON.toJson(data));
         } else {
             plugin.debug("-> " + verb + " " + url);
+            resp = plugin.getHttpProvider().request(verb, url, null);
         }
-        String resp = plugin.getHttpProvider().request(verb, url, GSON.toJson(data));
+
         plugin.debug("<- " + resp);
         return resp;
     }

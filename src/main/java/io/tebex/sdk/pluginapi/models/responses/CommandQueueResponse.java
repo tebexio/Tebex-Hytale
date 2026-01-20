@@ -7,6 +7,18 @@ import lombok.Getter;
 
 import java.util.List;
 
+/**
+ * ex.
+ * {
+ *     "meta": {
+ *         "execute_offline": false,
+ *         "next_check": 60,
+ *         "more": false
+ *     },
+ *     "players": [
+ *     ]
+ * }
+ */
 @Getter @AllArgsConstructor
 public class CommandQueueResponse {
     @Getter @AllArgsConstructor
@@ -16,13 +28,15 @@ public class CommandQueueResponse {
         @SerializedName("next_check")
         private final int nextCheck;
         private final boolean more;
-
-        private final List<QueuedPlayer> players;
-        public List<QueuedPlayer> getPlayers() {
-            return players != null ? players : List.of();
-        }
     }
 
     @SerializedName("meta")
     private final CommandQueueMeta meta;
+
+    @SerializedName("players")
+    private final List<QueuedPlayer> players;
+
+    public List<QueuedPlayer> getPlayers() {
+        return players != null ? players : List.of();
+    }
 }
