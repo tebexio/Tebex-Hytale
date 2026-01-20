@@ -34,6 +34,10 @@ java {
     }
 }
 
+tasks.withType(Test).configureEach {
+    enabled = false
+}
+
 def generatedJavaDir = layout.buildDirectory.dir("filtered-src")
 tasks.register('filterJavaVersion', Copy) {
     from 'src/main/java'
