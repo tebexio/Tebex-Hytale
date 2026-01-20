@@ -590,13 +590,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             if (universe == null) {
                 return null;
             }
-            var player = universe.getPlayerByUsername(username, NameMatching.EXACT);
-            if (player == null) {
-                warn("Player not found: " + username, "Please check the username and try again.");
-            }
-            return player;
+            return universe.getPlayerByUsername(username, NameMatching.EXACT);
         } catch (Exception e) {
-            debug("Error finding player by name: " + username + " - " + e.getMessage());
+            error("Error finding Hytale player by name: " + username, e);
         }
         return null;
     }
