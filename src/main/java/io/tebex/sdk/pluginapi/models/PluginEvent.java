@@ -42,7 +42,7 @@ public class PluginEvent {
     @SerializedName(value = "metadata")
     private String metadata;
     @SerializedName(value = "trace")
-    private String trace;
+    private String trace = "";
 
     public static PluginEvent logLine(@Nullable EnumEventLevel level, String message) {
         PluginEvent event = new PluginEvent();

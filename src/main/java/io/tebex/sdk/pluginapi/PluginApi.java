@@ -82,7 +82,7 @@ public class PluginApi {
         return GSON.fromJson(httpApi(Verb.POST, "checkout", req), CheckoutUrl.class);
     }
 
-    public void deleteCompletedCommands(ConcurrentHashMap<Integer, QueuedCommand> completedCommands) throws IOException, InterruptedException {
+    public void deleteCompletedCommands(ConcurrentHashMap<Integer, String> completedCommands) throws IOException, InterruptedException {
         // build payload, {"ids": [1,2,3,4,...]} array of int command ids to delete as a snapshot of the current state of the map
         Integer[] idsSnapshot = completedCommands.keySet().toArray(new Integer[0]);
         if (idsSnapshot.length == 0) return;
