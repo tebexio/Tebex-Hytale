@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'io.tebex'
-version = '1.0.1'
+version = '1.0.2'
 
 repositories {
     mavenCentral()
@@ -35,7 +35,7 @@ java {
 }
 
 tasks.withType(Test).configureEach {
-    enabled = false
+    enabled = true
 }
 
 def generatedJavaDir = layout.buildDirectory.dir("filtered-src")

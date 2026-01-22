@@ -57,7 +57,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Getter private final ConcurrentHashMap<Integer, Category> categoriesCache = new ConcurrentHashMap<>();
     @Getter private final ConcurrentHashMap<Integer, Package> packagesCache = new ConcurrentHashMap<>();
     @Getter private CopyOnWriteArrayList<CommunityGoal> communityGoalsCache = new CopyOnWriteArrayList<>();
-    private final ConcurrentHashMap<Integer, QueuedCommand> completedCommands = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, String> completedCommands = new ConcurrentHashMap<>();
 
     private ScheduledExecutorService tasks;
     private static TebexPlugin instance;
@@ -242,6 +242,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             pluginEvents.clear();
         } catch (Exception e) {
             error("Failed to submit plugin events to logs system", e);
+
+            // if growing too large on exceptions (API failure), dump events
+            if (pluginEvents.size() > 10) {
+                pluginEvents.clear();
+            }
         }
     }
 
@@ -278,7 +283,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return;
         }
 
-        for (QueuedCommand offlineCommand : offlineCommands.getCommands()) {
+        for (QueuedOfflineCommand offlineCommand : offlineCommands.getCommands()) {
             // check we haven't already completed this command
             if (completedCommands.containsKey(offlineCommand.getId())) {
                 continue;
@@ -296,13 +301,13 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
                 tasks.schedule(() -> {
                     info(String.format("Executing scheduled offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                    boolean success = executeCommand(offlineCommand);
+                    boolean success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
                     if (!success) {
                         warn(String.format("Scheduled offline command (ID:%d) '%s' could not be executed on %s", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
                         return;
                     }
                     // for scheduled commands, add immediately to completed and purge
-                    completedCommands.put(offlineCommand.getId(), offlineCommand);
+                    completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
                     try {
                         pluginApi.deleteCompletedCommands(completedCommands);
                     } catch (Exception e) {
@@ -315,14 +320,14 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             // no delay, execute this command now
             try {
                 info(String.format("Executing offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                var success = executeCommand(offlineCommand);
+                var success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
                 if (!success) {
                     warn(String.format("Offline command '%s' could not be executed on %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
                     continue; // process the next command
                 }
 
                 // successful execution, save command for deletion from the queue
-                completedCommands.put(offlineCommand.getId(), offlineCommand);
+                completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
             } catch (Exception e) {
                 error(String.format("Unexpected error executing offline command '%s' on player %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), e);
             }
@@ -339,10 +344,6 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return 120;
         }
 
-        if (commandQueueResponse.getPlayers().isEmpty()) {
-            debug("There are no online commands due for any players.");
-        }
-
         for (QueuedPlayer player : commandQueueResponse.getPlayers()) {
             try {
                 // make sure the player is online before we make a request to get their commands
@@ -353,7 +354,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
                 // player is online, so check for their online commands that are due
                 var onlineCommands = pluginApi.getOnlineCommands(player.getId());
-                for (QueuedCommand onlineCommand : onlineCommands.getCommands()) {
+                for (QueuedOnlineCommand onlineCommand : onlineCommands.getCommands()) {
                     // guard against duplicate executions
                     if (completedCommands.containsKey(onlineCommand.getId())) {
                         continue;
@@ -381,13 +382,13 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
                         tasks.schedule(() -> {
                             info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                            boolean success = executeCommand(onlineCommand);
+                            boolean success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
                             if (!success) {
                                 warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
                                 return;
                             }
                             // for scheduled commands, add immediately to completed and purge
-                            completedCommands.put(onlineCommand.getId(), onlineCommand);
+                            completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
                             try {
                                 pluginApi.deleteCompletedCommands(completedCommands);
                             } catch (Exception e) {
@@ -396,7 +397,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         }, onlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
                     } else { // no delay, execute now
                         info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                        var success = executeCommand(onlineCommand);
+                        var success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
                         if (!success) {
                             warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
                             continue;
@@ -404,7 +405,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     }
 
                     // successful execution, queue the command to be deleted
-                    completedCommands.put(onlineCommand.getId(), onlineCommand);
+                    completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
                 }
             } catch (Exception e) {
                 error("Unexpected error retrieving online commands for " + player.getName() + "): ", e);
@@ -530,27 +531,25 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Override
-    public boolean executeCommand(QueuedCommand command) {
+    public boolean executeCommand(String parsedCommand, @Nullable QueuedPlayer player, boolean requireOnline) {
         try {
-            String parsedCommand = command.getParsedCommand();
-            
             // If command is for a specific player, and they're online, execute on that player
-            if (command.getPlayer() != null && command.isOnline()) {
-                PlayerRef playerRef = findPlayerByName(command.getPlayer().getName());
+            if (player != null && requireOnline) {
+                PlayerRef playerRef = findPlayerByName(player.getName());
                 if (playerRef == null) {
-                    warn("Player not found: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    warn("Player not found: " + player.getName(), "Please check the username and try again.");
                     return false;
                 }
                 Ref<EntityStore> storeRef = playerRef.getReference();
                 if (storeRef == null || !storeRef.isValid()) {
-                    warn("Player reference invalid: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    warn("Player reference invalid: " + player.getName(), "Please check the username and try again.");
                     return false;
                 }
 
                 Store<EntityStore> store = storeRef.getStore();
                 Player playerComponent = store.getComponent(storeRef, Player.getComponentType());
                 if (playerComponent == null) {
-                    warn("Player component not found: " + command.getPlayer().getName(), "Please check the username and try again.");
+                    warn("Player component not found: " + player.getName(), "Please check the username and try again.");
                     return false;
                 }
 
@@ -567,7 +566,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             HytaleServer.get().getCommandManager().handleCommand(commandSender, parsedCommand);
             return true;
         } catch (Exception e) {
-            error("Error executing command: " + command.getCommand(), e);
+            error("Error executing command: " + parsedCommand, e);
             return false;
         }
     }
@@ -592,7 +591,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             }
             return universe.getPlayerByUsername(username, NameMatching.EXACT);
         } catch (Exception e) {
-            error("Error finding Hytale player by name: " + username, e);
+            debug("Error finding player by name: " + username + " - " + e.getMessage());
         }
         return null;
     }

@@ -1,19 +1,20 @@
 package io.tebex.sdk.pluginapi.models;
 
+import com.google.gson.annotations.SerializedName;
 import lombok.Data;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 @Data
-public class QueuedCommand {
+public class QueuedOfflineCommand {
     private final int id;
     private final String command;
     @Nullable private final Integer payment;
+    @SerializedName("package")
     @Nullable private final Integer packageId;
-
-    private final QueuedPlayer player;
-    private final boolean online;
     private final CommandConditions conditions;
+    @Nonnull private final QueuedPlayer player;
 
     public String getParsedCommand() {
         String parsedCommand = command;
