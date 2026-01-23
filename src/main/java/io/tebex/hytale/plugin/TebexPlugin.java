@@ -507,23 +507,36 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 return false; // player reference invalid
             }
 
+            // Get the world from the store's external data
             Store<EntityStore> store = ref.getStore();
-            Player playerComponent = store.getComponent(ref, Player.getComponentType());
-            if (playerComponent == null) {
-                return false; // player component not found
-            }
+            World world = store.getExternalData().getWorld();
 
-            ItemContainer inventory = playerComponent.getInventory().getCombinedEverything();
-            int availableSlots = 0;
-            short totalSlots = inventory.getCapacity();
-            for (short i = 0; i < totalSlots; i++) {
-                var stack = inventory.getItemStack(i);
-                if (stack == null || stack.isEmpty()) {
-                    availableSlots++;
+            // Run the inventory check on the world thread and wait for the result
+            CompletableFuture<Boolean> future = new CompletableFuture<>();
+            world.execute(() -> {
+                try {
+                    Player playerComponent = store.getComponent(ref, Player.getComponentType());
+                    if (playerComponent == null) {
+                        future.complete(false);
+                        return;
+                    }
+
+                    ItemContainer inventory = playerComponent.getInventory().getCombinedEverything();
+                    int availableSlots = 0;
+                    short totalSlots = inventory.getCapacity();
+                    for (short i = 0; i < totalSlots; i++) {
+                        var stack = inventory.getItemStack(i);
+                        if (stack == null || stack.isEmpty()) {
+                            availableSlots++;
+                        }
+                    }
+                    future.complete(availableSlots >= slots);
+                } catch (Exception e) {
+                    future.completeExceptionally(e);
                 }
-            }
+            });
 
-            return availableSlots >= slots;
+            return future.get(5, TimeUnit.SECONDS); // Wait up to 5 seconds for result
         } catch (Exception e) {
             error("Error checking inventory slots for player " + player.getName(), e);
             return false;
@@ -546,15 +559,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     return false;
                 }
 
+                // Get the world from the store's external data
                 Store<EntityStore> store = storeRef.getStore();
-                Player playerComponent = store.getComponent(storeRef, Player.getComponentType());
-                if (playerComponent == null) {
-                    warn("Player component not found: " + player.getName(), "Please check the username and try again.");
-                    return false;
-                }
+                World world = store.getExternalData().getWorld();
 
-                // Execute command on the player as the console
-                World world = (store.getExternalData()).getWorld();
+                // Execute the command on the world thread to avoid IllegalStateException
                 world.execute(() -> {
                     HytaleServer.get().getCommandManager().handleCommand(ConsoleSender.INSTANCE, parsedCommand);
                 });
