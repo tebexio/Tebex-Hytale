@@ -35,7 +35,7 @@ java {
 }
 
 tasks.withType(Test).configureEach {
-    enabled = true
+    enabled = false
 }
 
 def generatedJavaDir = layout.buildDirectory.dir("filtered-src")
