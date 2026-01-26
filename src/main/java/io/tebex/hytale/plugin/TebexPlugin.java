@@ -274,64 +274,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     private void handleOfflineCommands() {
-        debug("retrieving offline commands...");
-        OfflineCommandsResponse offlineCommands = null;
-        try {
-            offlineCommands = pluginApi.getOfflineCommands();
-        } catch (Exception ex) {
-            error("Unexpected error while getting offline commands: ", ex);
-            return;
-        }
-
-        for (QueuedOfflineCommand offlineCommand : offlineCommands.getCommands()) {
-            // check we haven't already completed this command
-            if (completedCommands.containsKey(offlineCommand.getId())) {
-                continue;
-            }
-
-            // commands might have a delay, so we either will schedule execution in the future or execute immediately
-            if (offlineCommand.getConditions().getDelay() > 0) {
-                info(String.format(
-                        "Scheduling offline command (ID:%d) '%s' on %s to run in %d seconds...",
-                        offlineCommand.getId(),
-                        offlineCommand.getCommand(),
-                        offlineCommand.getPlayer().getName(),
-                        offlineCommand.getConditions().getDelay()
-                ));
-
-                tasks.schedule(() -> {
-                    info(String.format("Executing scheduled offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                    boolean success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
-                    if (!success) {
-                        warn(String.format("Scheduled offline command (ID:%d) '%s' could not be executed on %s", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
-                        return;
-                    }
-                    // for scheduled commands, add immediately to completed and purge
-                    completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
-                    try {
-                        pluginApi.deleteCompletedCommands(completedCommands);
-                    } catch (Exception e) {
-                        error("Unexpected error while flushing completed commands! This can result in duplicated deliveries!: " + e.getMessage(), e);
-                    }
-                }, offlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
-                continue; // command is scheduled, move on to the next
-            }
-
-            // no delay, execute this command now
-            try {
-                info(String.format("Executing offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                var success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
-                if (!success) {
-                    warn(String.format("Offline command '%s' could not be executed on %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
-                    continue; // process the next command
-                }
-
-                // successful execution, save command for deletion from the queue
-                completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
-            } catch (Exception e) {
-                error(String.format("Unexpected error executing offline command '%s' on player %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), e);
-            }
-        }
+        // Offline commands are disabled - we only execute commands when the player is online
+        // so we can resolve their real Hytale UUID instead of relying on Tebex's (often incorrect) UUID.
+        // Offline commands will remain in the queue and execute when the player comes online
+        // via the online command queue.
+        debug("Offline commands disabled - commands will execute when player is online");
     }
 
     private int handleOnlineCommands() {
@@ -381,14 +328,16 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         ));
 
                         tasks.schedule(() -> {
-                            info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                            boolean success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
+                            // Use real Hytale UUID instead of Tebex's UUID
+                            String parsedCommand = getParsedCommandWithRealUuid(onlineCommand.getCommand(), player);
+                            info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), parsedCommand, player.getName()));
+                            boolean success = executeCommand(parsedCommand, player, true);
                             if (!success) {
-                                warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                                warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), parsedCommand, player.getName()), "Hytale failed to execute the command. Check the command syntax.");
                                 return;
                             }
                             // for scheduled commands, add immediately to completed and purge
-                            completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
+                            completedCommands.put(onlineCommand.getId(), parsedCommand);
                             try {
                                 pluginApi.deleteCompletedCommands(completedCommands);
                             } catch (Exception e) {
@@ -396,16 +345,19 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                             }
                         }, onlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
                     } else { // no delay, execute now
-                        info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                        var success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
+                        // Use real Hytale UUID instead of Tebex's UUID
+                        String parsedCommand = getParsedCommandWithRealUuid(onlineCommand.getCommand(), player);
+                        info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), parsedCommand, player.getName()));
+                        var success = executeCommand(parsedCommand, player, true);
                         if (!success) {
-                            warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                            warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), parsedCommand, player.getName()), "Hytale failed to execute the command. Check the command syntax.");
                             continue;
                         }
                     }
 
                     // successful execution, queue the command to be deleted
-                    completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
+                    String parsedCommandForLog = getParsedCommandWithRealUuid(onlineCommand.getCommand(), player);
+                    completedCommands.put(onlineCommand.getId(), parsedCommandForLog);
                 }
             } catch (Exception e) {
                 error("Unexpected error retrieving online commands for " + player.getName() + "): ", e);
@@ -603,6 +555,37 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             debug("Error finding player by name: " + username + " - " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * Get the real Hytale UUID for a player by username.
+     * Returns null if the player is not online.
+     */
+    @Nullable
+    public String getRealPlayerUuid(String username) {
+        PlayerRef playerRef = findPlayerByName(username);
+        if (playerRef != null) {
+            return playerRef.getUuid().toString();
+        }
+        return null;
+    }
+
+    /**
+     * Parse command with real Hytale UUID instead of Tebex's UUID.
+     * Falls back to Tebex UUID if player is not online.
+     */
+    public String getParsedCommandWithRealUuid(String command, QueuedPlayer player) {
+        String parsedCommand = command;
+        parsedCommand = parsedCommand.replace("{username}", player.getName());
+        parsedCommand = parsedCommand.replace("{name}", player.getName());
+
+        // Use real Hytale UUID if player is online, otherwise use Tebex's UUID
+        String realUuid = getRealPlayerUuid(player.getName());
+        String uuidToUse = realUuid != null ? realUuid : player.getUuid();
+
+        parsedCommand = parsedCommand.replace("{id}", uuidToUse);
+        parsedCommand = parsedCommand.replace("{uuid}", uuidToUse);
+        return parsedCommand;
     }
 
     @Override
