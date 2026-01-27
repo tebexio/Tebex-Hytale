@@ -598,7 +598,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             if (universe == null) {
                 return null;
             }
-            return universe.getPlayerByUsername(username, NameMatching.EXACT);
+            return universe.getPlayerByUsername(username, NameMatching.EXACT_IGNORE_CASE);
         } catch (Exception e) {
             debug("Error finding player by name: " + username + " - " + e.getMessage());
         }
