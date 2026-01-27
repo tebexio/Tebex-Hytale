@@ -2,6 +2,7 @@ package io.tebex.sdk.pluginapi;
 
 import io.tebex.sdk.http.IHttpProvider;
 import io.tebex.sdk.http.JdkHttpProvider;
+import io.tebex.sdk.pluginapi.models.ICommand;
 import io.tebex.sdk.pluginapi.models.QueuedPlayer;
 
 import javax.annotation.Nullable;
@@ -20,7 +21,7 @@ public class MockPlugin implements IPluginAdapter {
     }
 
     @Override
-    public boolean executeCommand(String parsedCommand, @Nullable QueuedPlayer player, boolean requireOnline) {
+    public boolean executeCommand(ICommand command, @Nullable QueuedPlayer tebexPlayer, boolean requireOnline) {
         return false;
     }
 

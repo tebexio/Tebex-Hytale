@@ -301,7 +301,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
                 tasks.schedule(() -> {
                     info(String.format("Executing scheduled offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                    boolean success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
+                    boolean success = executeCommand(offlineCommand, offlineCommand.getPlayer(), false);
                     if (!success) {
                         warn(String.format("Scheduled offline command (ID:%d) '%s' could not be executed on %s", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
                         return;
@@ -320,7 +320,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             // no delay, execute this command now
             try {
                 info(String.format("Executing offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
-                var success = executeCommand(offlineCommand.getParsedCommand(), offlineCommand.getPlayer(), false);
+                var success = executeCommand(offlineCommand, offlineCommand.getPlayer(), false);
                 if (!success) {
                     warn(String.format("Offline command '%s' could not be executed on %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), "Hytale failed to execute the command. Check the command syntax.");
                     continue; // process the next command
@@ -344,16 +344,16 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return 120;
         }
 
-        for (QueuedPlayer player : commandQueueResponse.getPlayers()) {
+        for (QueuedPlayer tebexPlayer : commandQueueResponse.getPlayers()) {
             try {
                 // make sure the player is online before we make a request to get their commands
-                if (!isPlayerOnline(player.getName())) {
-                    debug(String.format("Player %s has commands available but is not online, skipping...", player.getName()));
+                if (!isPlayerOnline(tebexPlayer.getName())) {
+                    debug(String.format("Player %s has commands available but is not online, skipping...", tebexPlayer.getName()));
                     continue;
                 }
 
                 // player is online, so check for their online commands that are due
-                var onlineCommands = pluginApi.getOnlineCommands(player.getId());
+                var onlineCommands = pluginApi.getOnlineCommands(tebexPlayer.getId());
                 for (QueuedOnlineCommand onlineCommand : onlineCommands.getCommands()) {
                     // guard against duplicate executions
                     if (completedCommands.containsKey(onlineCommand.getId())) {
@@ -363,8 +363,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     // check command conditions - check inventory slots before applying the command
                     Integer requiredSlots = onlineCommand.getConditions().getRequiredSlots();
                     if (requiredSlots != null && requiredSlots > 0) {
-                        if (!playerHasInventorySlotsAvailable(player, requiredSlots)) {
-                            warn(String.format("Player " + player.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
+                        if (!playerHasInventorySlotsAvailable(tebexPlayer, requiredSlots)) {
+                            warn(String.format("Player " + tebexPlayer.getName() + " does not have enough inventory slots to execute command '%s'. Need: %d",
                                     onlineCommand.getCommand(), requiredSlots), "We will try again at the next queue check.");
                             continue;
                         }
@@ -376,19 +376,19 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                                 "Scheduling online command (ID: %d) '%s' on %s to run in %d seconds...",
                                 onlineCommand.getId(),
                                 onlineCommand.getCommand(),
-                                player.getName(),
+                                tebexPlayer.getName(),
                                 onlineCommand.getConditions().getDelay()
                         ));
 
                         tasks.schedule(() -> {
-                            info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                            boolean success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
+                            info(String.format("Executing scheduled online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), tebexPlayer.getName()));
+                            boolean success = executeCommand(onlineCommand, tebexPlayer, true);
                             if (!success) {
-                                warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                                warn(String.format("Scheduled online command (ID:%d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), tebexPlayer.getName()), "Hytale failed to execute the command. Check the command syntax.");
                                 return;
                             }
                             // for scheduled commands, add immediately to completed and purge
-                            completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
+                            completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(tebexPlayer.getName(), tebexPlayer.getUuid()));
                             try {
                                 pluginApi.deleteCompletedCommands(completedCommands);
                             } catch (Exception e) {
@@ -396,19 +396,19 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                             }
                         }, onlineCommand.getConditions().getDelay(), TimeUnit.SECONDS);
                     } else { // no delay, execute now
-                        info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()));
-                        var success = executeCommand(onlineCommand.getParsedCommand(player), player, true);
+                        info(String.format("Executing online command (ID:%d) '%s' on %s...", onlineCommand.getId(), onlineCommand.getCommand(), tebexPlayer.getName()));
+                        var success = executeCommand(onlineCommand, tebexPlayer, true);
                         if (!success) {
-                            warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), player.getName()), "Hytale failed to execute the command. Check the command syntax.");
+                            warn(String.format("Online command (ID: %d) '%s' could not be executed on %s", onlineCommand.getId(), onlineCommand.getCommand(), tebexPlayer.getName()), "Hytale failed to execute the command. Check the command syntax.");
                             continue;
                         }
                     }
 
                     // successful execution, queue the command to be deleted
-                    completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(player));
+                    completedCommands.put(onlineCommand.getId(), onlineCommand.getParsedCommand(tebexPlayer.getName(), tebexPlayer.getUuid()));
                 }
             } catch (Exception e) {
-                error("Unexpected error retrieving online commands for " + player.getName() + "): ", e);
+                error("Unexpected error retrieving online commands for " + tebexPlayer.getName() + "): ", e);
             }
         }
 
@@ -544,18 +544,18 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Override
-    public boolean executeCommand(String parsedCommand, @Nullable QueuedPlayer player, boolean requireOnline) {
+    public boolean executeCommand(ICommand command, @Nullable QueuedPlayer tebexPlayer, boolean requireOnline) {
         try {
             // If command is for a specific player, and they're online, execute on that player
-            if (player != null && requireOnline) {
-                PlayerRef playerRef = findPlayerByName(player.getName());
-                if (playerRef == null) {
-                    warn("Player not found: " + player.getName(), "Please check the username and try again.");
+            if (tebexPlayer != null && requireOnline) {
+                PlayerRef hytalePlayerRef = findPlayerByName(tebexPlayer.getName());
+                if (hytalePlayerRef == null) {
+                    warn("Player not found: " + tebexPlayer.getName(), "Please check the username and try again.");
                     return false;
                 }
-                Ref<EntityStore> storeRef = playerRef.getReference();
+                Ref<EntityStore> storeRef = hytalePlayerRef.getReference();
                 if (storeRef == null || !storeRef.isValid()) {
-                    warn("Player reference invalid: " + player.getName(), "Please check the username and try again.");
+                    warn("Player reference invalid: " + tebexPlayer.getName(), "Please check the username and try again.");
                     return false;
                 }
 
@@ -563,19 +563,26 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 Store<EntityStore> store = storeRef.getStore();
                 World world = store.getExternalData().getWorld();
 
+                // Parse the command using the player's real UUID since they are online - the Tebex UUID might be incorrect.
+                var parsedOnlineCommand = command.getParsedCommand(tebexPlayer.getName(), hytalePlayerRef.getUuid().toString());
+
                 // Execute the command on the world thread to avoid IllegalStateException
-                world.execute(() -> {
-                    HytaleServer.get().getCommandManager().handleCommand(ConsoleSender.INSTANCE, parsedCommand);
-                });
+                world.execute(() -> HytaleServer.get().getCommandManager().handleCommand(ConsoleSender.INSTANCE, parsedOnlineCommand));
                 return true;
             }
 
             // Fallback for offline commands or if player not present
             var commandSender = ConsoleSender.INSTANCE;
-            HytaleServer.get().getCommandManager().handleCommand(commandSender, parsedCommand);
+            if (tebexPlayer != null) {
+                //TODO Tebex player UUIDs for Hytale may be incorrect
+                var parsedOfflineCommand =  command.getParsedCommand(tebexPlayer.getName(), tebexPlayer.getUuid());
+                HytaleServer.get().getCommandManager().handleCommand(commandSender, parsedOfflineCommand);
+            } else { // no player for this command, run the raw command
+                HytaleServer.get().getCommandManager().handleCommand(commandSender, command.getCommand());
+            }
             return true;
         } catch (Exception e) {
-            error("Error executing command: " + parsedCommand, e);
+            error("Error executing command: " + command, e);
             return false;
         }
     }

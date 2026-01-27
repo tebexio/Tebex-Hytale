@@ -1,6 +1,7 @@
 package io.tebex.sdk.pluginapi;
 
 import io.tebex.sdk.http.IHttpProvider;
+import io.tebex.sdk.pluginapi.models.ICommand;
 import io.tebex.sdk.pluginapi.models.QueuedOnlineCommand;
 import io.tebex.sdk.pluginapi.models.QueuedPlayer;
 
@@ -13,7 +14,7 @@ public interface IPluginAdapter {
 
     boolean playerHasInventorySlotsAvailable(QueuedPlayer player, int slots);
 
-    boolean executeCommand(String parsedCommand, @Nullable QueuedPlayer player, boolean requireOnline);
+    boolean executeCommand(ICommand command, @Nullable QueuedPlayer tebexPlayer, boolean requireOnline);
 
     boolean isPlayerOnline(String username);
 

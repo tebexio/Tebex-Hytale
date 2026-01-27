@@ -7,7 +7,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 @Data
-public class QueuedOfflineCommand {
+public class QueuedOfflineCommand implements ICommand {
     private final int id;
     private final String command;
     @Nullable private final Integer payment;
