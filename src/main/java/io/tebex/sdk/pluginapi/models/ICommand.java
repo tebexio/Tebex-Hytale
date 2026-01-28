@@ -16,4 +16,7 @@ public interface ICommand {
                 .replace("{uuid}", uuid)
                 .replace("{id}", uuid);
     }
+    default boolean hasUuidVariables() {
+        return getCommand().contains("{uuid}") || getCommand().contains("{id}");
+    }
 }

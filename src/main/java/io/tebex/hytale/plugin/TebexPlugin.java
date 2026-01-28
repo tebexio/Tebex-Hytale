@@ -7,6 +7,9 @@ import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.HytaleServer;
 import com.hypixel.hytale.server.core.NameMatching;
+import com.hypixel.hytale.server.core.auth.ProfileServiceClient;
+import com.hypixel.hytale.server.core.auth.ServerAuthManager;
+import com.hypixel.hytale.server.core.auth.SessionServiceClient;
 import com.hypixel.hytale.server.core.console.ConsoleSender;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.player.PlayerConnectEvent;
@@ -283,10 +286,27 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return;
         }
 
+        ServerAuthManager authManager = ServerAuthManager.getInstance();
+        ProfileServiceClient profileService = authManager.getProfileServiceClient();
+        var authed = authManager.getSessionToken() != null;
+        if (!authed) {
+            warnNoLog("server is not authenticated with hytale (no session token), Tebex cannot look up offline player uuids", "Use the /auth commands to see authentication options");
+        }
+
         for (QueuedOfflineCommand offlineCommand : offlineCommands.getCommands()) {
             // check we haven't already completed this command
             if (completedCommands.containsKey(offlineCommand.getId())) {
                 continue;
+            }
+
+            var offlineUuid = offlineCommand.getPlayer().getUuid(); // will be incorrect for offline commands
+            if (authed) { // look up the player's uuid on the profile service if the server is authed
+                try {
+                    var targetPlayerProfile = profileService.getProfileByUsername(offlineCommand.getPlayer().getName(), authManager.getSessionToken());
+                    offlineUuid = targetPlayerProfile.getUuid().toString();
+                } catch (Exception e) {
+                    error("Failed to retrieve offline player uuid: " + offlineCommand.getPlayer().getName(), e);
+                }
             }
 
             // commands might have a delay, so we either will schedule execution in the future or execute immediately
@@ -299,6 +319,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         offlineCommand.getConditions().getDelay()
                 ));
 
+                final String finalOfflineUUID = offlineUuid;
                 tasks.schedule(() -> {
                     info(String.format("Executing scheduled offline command (ID:%d) '%s' on %s...", offlineCommand.getId(), offlineCommand.getCommand(), offlineCommand.getPlayer().getName()));
                     boolean success = executeCommand(offlineCommand, offlineCommand.getPlayer(), false);
@@ -307,7 +328,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         return;
                     }
                     // for scheduled commands, add immediately to completed and purge
-                    completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
+                    completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand(finalOfflineUUID));
                     try {
                         pluginApi.deleteCompletedCommands(completedCommands);
                     } catch (Exception e) {
@@ -327,7 +348,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 }
 
                 // successful execution, save command for deletion from the queue
-                completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand());
+                completedCommands.put(offlineCommand.getId(), offlineCommand.getParsedCommand(offlineUuid));
             } catch (Exception e) {
                 error(String.format("Unexpected error executing offline command '%s' on player %s", offlineCommand.getCommand(), offlineCommand.getPlayer().getName()), e);
             }
@@ -573,9 +594,23 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
             // Fallback for offline commands or if player not present
             var commandSender = ConsoleSender.INSTANCE;
+            ServerAuthManager authManager = ServerAuthManager.getInstance();
+            ProfileServiceClient profileService = authManager.getProfileServiceClient();
+            var authed = authManager.getSessionToken() != null;
+
             if (tebexPlayer != null) {
-                //TODO Tebex player UUIDs for Hytale may be incorrect
-                var parsedOfflineCommand =  command.getParsedCommand(tebexPlayer.getName(), tebexPlayer.getUuid());
+                //Tebex player UUIDs for Hytale may be incorrect, so look up on hytale auth service if available
+                var parsedOfflineCommand = command.getParsedCommand(tebexPlayer.getName(), tebexPlayer.getUuid());
+                if (authed && command.hasUuidVariables()) {
+                    try {
+                        var playerHytaleProfile = profileService.getProfileByUsername(tebexPlayer.getName(), authManager.getSessionToken());
+                        // set commands to have the profile id from hytale
+                        parsedOfflineCommand =  command.getParsedCommand(tebexPlayer.getName(), playerHytaleProfile.getUuid().toString());
+                    } catch (Exception e) {
+                        error("error checking offline player uuid on hytale, reported UUID might be incorrect!: " +  tebexPlayer.getName(), e);
+                    } // fall through to execute the original parsed command
+                }
+
                 HytaleServer.get().getCommandManager().handleCommand(commandSender, parsedOfflineCommand);
             } else { // no player for this command, run the raw command
                 HytaleServer.get().getCommandManager().handleCommand(commandSender, command.getCommand());
