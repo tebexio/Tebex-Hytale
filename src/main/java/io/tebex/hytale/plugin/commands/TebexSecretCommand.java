@@ -32,10 +32,16 @@ public class TebexSecretCommand extends CommandBase {
 
         // make sure the secret key worked by checking if the server is non-null
         var info = plugin.getTebexServerInfo();
+
         if (info == null) {
             ctx.sendMessage(Message.raw("Invalid secret key! Double check that it is correct and try again."));
             plugin.warnNoLog("Invalid secret key!", "Double check that it is correct and try again.");
             plugin.getPluginApi().setSecretKey("");
+            return;
+        }
+
+        if (!info.getAccount().getGameType().equalsIgnoreCase("hytale")) {
+            plugin.error("Invalid game server key", new Throwable("You can only connect a Hytale store to a Hytale server."));
             return;
         }
 
