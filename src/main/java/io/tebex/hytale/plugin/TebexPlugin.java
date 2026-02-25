@@ -194,7 +194,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             } else {
                 debug("buy command name set to: /" + buyName);
             }
-            this.getCommandRegistry().registerCommand(new BuyCommand(this.config.get().buyCommandName));
+            this.getCommandRegistry().registerCommand(new BuyCommand(buyName));
         }
     }
 

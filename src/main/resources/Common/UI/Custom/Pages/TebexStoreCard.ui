@@ -1,0 +1,39 @@
+$C = "../Common.ui";
+
+Button #Card {
+  Anchor: (Width: 414, Height: 146, Bottom: 12, Right: 12);
+  Padding: (Full: 10);
+  LayoutMode: Top;
+  Background: #0f1b2d(0.88);
+  Style: (
+    Hovered: (Background: #16253a(0.95)),
+    Pressed: (Background: #1c2f4a(0.95))
+  );
+
+  Label #SubcommandName {
+    Style: (
+      FontSize: 18,
+      RenderBold: true,
+      TextColor: $C.@ColorDefault,
+      RenderUppercase: true
+    );
+    Anchor: (Bottom: 4);
+  }
+
+  Label #SubcommandUsage {
+    Style: (
+      FontSize: 13,
+      TextColor: $C.@ColorBlueAccent,
+      RenderBold: true
+    );
+    Anchor: (Bottom: 4);
+  }
+
+  Label #SubcommandDescription {
+    Style: (
+      FontSize: 12,
+      TextColor: $C.@ColorDefaultLabel,
+      Wrap: true
+    );
+  }
+}

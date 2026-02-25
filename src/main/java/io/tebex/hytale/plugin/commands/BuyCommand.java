@@ -11,6 +11,7 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import io.tebex.hytale.plugin.TebexPlugin;
+import io.tebex.hytale.plugin.gui.BuyGui;
 
 import javax.annotation.Nonnull;
 
@@ -27,21 +28,29 @@ public class BuyCommand extends AbstractPlayerCommand {
             return;
         }
 
-        // respond with the configured buy message.
-        var message = TebexPlugin.get().getConfig().get().getBuyCommandMessage();
-        var clickable = false;
+        boolean opened = BuyGui.getInstance().open(store, ref, playerRef, world);
+        if (!opened) {
+            sendConfiguredBuyMessage(ctx);
+        }
+    }
+
+    private void sendConfiguredBuyMessage(@Nonnull CommandContext ctx) {
+        var plugin = TebexPlugin.get();
+        var message = plugin.getConfig().get().getBuyCommandMessage();
         if (message == null || message.isEmpty()) {
             return;
         }
 
+        var domain = plugin.getTebexServerInfo().getAccount().getDomain();
+        var clickable = false;
         if (message.contains("{url}")) {
-            message = message.replace("{url}", TebexPlugin.get().getTebexServerInfo().getAccount().getDomain());
+            message = message.replace("{url}", domain);
             clickable = true;
         }
 
-        if (clickable) { // requested store url, add a clickable link
-            ctx.sendMessage(Message.raw(message).link(TebexPlugin.get().getTebexServerInfo().getAccount().getDomain()));
-        } else { // basic message
+        if (clickable) {
+            ctx.sendMessage(Message.raw(message).link(domain));
+        } else {
             ctx.sendMessage(Message.raw(message));
         }
     }

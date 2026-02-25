@@ -1,0 +1,6 @@
+$C = "../Common.ui";
+
+$C.@SecondaryTextButton #Button {
+  @Anchor = (Height: 42);
+  @Text = "Action";
+}

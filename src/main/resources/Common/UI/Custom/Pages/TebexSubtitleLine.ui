@@ -1,0 +1,10 @@
+$C = "../Common.ui";
+
+Label #Line {
+  Style: (
+    FontSize: 15,
+    TextColor: $C.@ColorDefaultLabel,
+    HorizontalAlignment: Start
+  );
+  Text: "Subtitle";
+}

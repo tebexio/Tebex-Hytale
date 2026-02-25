@@ -8,6 +8,7 @@ public class CategoryPackage {
     private final int order;
     private final String name;
     private final double price;
+    private final String description;
     private final String image;
     private final String itemId;
     private final Sale sale;

@@ -11,6 +11,9 @@ import java.util.List;
 public class Package {
     private final int id;
     private final String name;
+    private final String description;
+    @SerializedName("description_html")
+    private final String descriptionHtml;
     private final String image;
     private final double price;
     @SerializedName("expiry_length")
