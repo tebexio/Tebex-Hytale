@@ -1,0 +1,34 @@
+$C = "../Common.ui";
+
+Group #Card {
+  LayoutMode: Top;
+  Padding: (Full: 12);
+  Background: #0f1b2d(0.88);
+
+  Label #SubcommandName {
+    Style: (
+      FontSize: 20,
+      RenderBold: true,
+      TextColor: $C.@ColorDefault,
+      RenderUppercase: true
+    );
+    Anchor: (Bottom: 4);
+  }
+
+  Label #SubcommandUsage {
+    Style: (
+      FontSize: 14,
+      RenderBold: true,
+      TextColor: $C.@ColorGoldHighlight
+    );
+    Anchor: (Bottom: 8);
+  }
+
+  Label #SubcommandDescription {
+    Style: (
+      FontSize: 13,
+      TextColor: $C.@ColorDefaultLabel,
+      Wrap: true
+    );
+  }
+}

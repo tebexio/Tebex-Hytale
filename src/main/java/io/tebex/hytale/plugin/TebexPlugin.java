@@ -24,6 +24,11 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
 import io.tebex.hytale.plugin.commands.BuyCommand;
 import io.tebex.hytale.plugin.commands.TebexCommand;
+import io.tebex.sdk.headlessapi.HeadlessApi;
+import io.tebex.sdk.headlessapi.models.HeadlessCategory;
+import io.tebex.sdk.headlessapi.models.HeadlessPackage;
+import io.tebex.sdk.headlessapi.models.SidebarModule;
+import io.tebex.sdk.headlessapi.models.Webstore;
 import io.tebex.sdk.http.IHttpProvider;
 import io.tebex.sdk.http.JdkHttpProvider;
 import io.tebex.sdk.pluginapi.IPluginAdapter;
@@ -38,20 +43,60 @@ import lombok.Setter;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.imageio.ImageIO;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.logging.Level;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public static final String VERSION = "{{VERSION}}";
+    private static final String THUMBNAIL_CACHE_DIRECTORY = "thumbnail-cache";
+    private static final String RUNTIME_THUMBNAIL_DIRECTORY = "UI/Custom/Pages/Assets/TebexStoreThumbnails";
+    private static final String RUNTIME_THUMBNAIL_TEXTURE_PREFIX = "UI/Custom/Pages/Assets/TebexStoreThumbnails";
+    private static final List<String> RUNTIME_THUMBNAIL_COMPATIBILITY_ALIAS_DIRECTORIES = List.of(
+            "TebexStoreThumbnails",
+            "Common/TebexStoreThumbnails"
+    );
+    private static final List<String> LEGACY_RUNTIME_CACHE_DIRECTORIES = List.of("runtime-assets");
+    private static final String RUNTIME_THUMBNAIL_PLACEHOLDER = "_placeholder.png";
+    private static final int RUNTIME_THUMBNAIL_SIZE = 96;
+    private static final int RUNTIME_THUMBNAIL_SIZE_2X = 192;
 
     // tebex apis
     @Getter private PluginApi pluginApi;
+    @Getter private HeadlessApi headlessApi;
 
     // tebex fields
     @Getter private final Config<TebexConfig> config;
     @Nullable @Getter private ServerInformation tebexServerInfo;
+    @Nullable @Getter private Webstore headlessWebstore;
     @Setter private long nextCheckQueue;
     private long nextSendPlayerEvents;
     private long nextSendServerEvents;
@@ -61,6 +106,14 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Getter private final ConcurrentHashMap<Integer, Package> packagesCache = new ConcurrentHashMap<>();
     @Getter private CopyOnWriteArrayList<CommunityGoal> communityGoalsCache = new CopyOnWriteArrayList<>();
     private final ConcurrentHashMap<Integer, String> completedCommands = new ConcurrentHashMap<>();
+    private boolean warnedMissingHeadlessToken = false;
+    private boolean warnedHeadlessAccountMismatch = false;
+    private boolean loggedInformationPayload = false;
+    private String configuredHeadlessPrivateKey = "";
+    private final ConcurrentHashMap<Integer, String> packageThumbnailSources = new ConcurrentHashMap<>();
+    private final HttpClient thumbnailHttpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     private ScheduledExecutorService tasks;
     private static TebexPlugin instance;
@@ -97,9 +150,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         super.start();
         debug("Tebex has reached the start phase.");
         pluginApi = new PluginApi(this);
+        headlessApi = new HeadlessApi(this);
 
         String envSecretKey = System.getenv("TEBEX_SECRET_KEY"); // to auth plugin api
         String configSecretKey = this.config != null && config.get() != null ? config.get().getSecretKey() : null;
+        String envHeadlessPrivateKey = System.getenv("TEBEX_HEADLESS_PRIVATE_KEY");
+        String configHeadlessPrivateKey = this.config != null && config.get() != null ? config.get().getHeadlessPrivateKey() : null;
 
         // authenticate store with the game server secret key, required
         String secretKey = "";
@@ -119,8 +175,19 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
         // set up the store
         pluginApi.setSecretKey(secretKey);
+
+        String headlessPrivateKey = "";
+        if (envHeadlessPrivateKey != null && !envHeadlessPrivateKey.isBlank()) {
+            info("Using TEBEX_HEADLESS_PRIVATE_KEY environment variable");
+            headlessPrivateKey = envHeadlessPrivateKey;
+        } else if (configHeadlessPrivateKey != null && !configHeadlessPrivateKey.isBlank()) {
+            headlessPrivateKey = configHeadlessPrivateKey;
+        }
+
+        configuredHeadlessPrivateKey = headlessPrivateKey;
+        headlessApi.setCredentials("", configuredHeadlessPrivateKey);
         info("Loading Tebex webstore...");
-        this.refreshServerInfo(); // will set server to null if failed
+        this.refreshServerInfo(true); // will set server to null if failed
         if (this.tebexServerInfo == null) {
             warnNoLog("Failed to authenticate with Tebex.", "Please check your secret key and try again.");
             return;
@@ -254,26 +321,818 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     public void refreshServerInfo() {
+        refreshServerInfo(false);
+    }
+
+    public void refreshServerInfo(boolean allowThumbnailDownload) {
         try {
-            ServerInformation serverInfo = pluginApi.getServerInformation();
-            debug("Downloading store info...");
-            packagesCache.clear();
-            pluginApi.getPackages().forEach(p -> {
-                packagesCache.put(p.getId(), p);
-            });
-            var remoteCategories = pluginApi.getCategories();
-            categoriesCache.clear();
-            remoteCategories.sort(java.util.Comparator.comparingInt(Category::getOrder));
-            pluginApi.getCategories().forEach(c -> {
-                categoriesCache.put(c.getId(), c);
-            });
-            communityGoalsCache = new CopyOnWriteArrayList<>(pluginApi.getCommunityGoals());
-            debug("Packages: " + packagesCache.size() + ", Categories: " + categoriesCache.size() + ", Community Goals: " + communityGoalsCache.size());
+            String serverInfoRaw = pluginApi.getServerInformationRaw();
+            ServerInformation serverInfo = PluginApi.GSON.fromJson(serverInfoRaw, ServerInformation.class);
             this.tebexServerInfo = serverInfo;
+            if (!loggedInformationPayload) {
+                loggedInformationPayload = true;
+                info("Plugin API /information response: " + serverInfoRaw);
+            }
+
+            String informationPublicToken = serverInfo != null && serverInfo.getAccount() != null ? serverInfo.getAccount().getPublicToken() : null;
+            if (informationPublicToken != null && !informationPublicToken.isBlank()) {
+                headlessApi.setCredentials(informationPublicToken, configuredHeadlessPrivateKey);
+            } else {
+                headlessApi.setCredentials("", configuredHeadlessPrivateKey);
+            }
         } catch (Exception e) {
             error("Failed to refresh server info: " + e.getMessage(), e);
             this.tebexServerInfo = null;
+            clearStoreCaches();
+            return;
         }
+
+        try {
+            refreshStoreDataFromHeadlessApi(allowThumbnailDownload);
+        } catch (IllegalStateException e) {
+            if (!warnedMissingHeadlessToken) {
+                warnedMissingHeadlessToken = true;
+                warnNoLog(
+                        "Headless API public token is missing from Plugin API /information. Falling back to Plugin API store listing.",
+                        "Ensure Tebex Plugin API /information includes account.public_token for this server key."
+                );
+            }
+            refreshStoreDataFromPluginApiFallback();
+        } catch (Exception e) {
+            warn(
+                    "Failed to refresh Headless API store data: " + e.getMessage(),
+                    "Falling back to Plugin API store listing for this refresh cycle."
+            );
+            refreshStoreDataFromPluginApiFallback();
+        }
+    }
+
+    private void refreshStoreDataFromPluginApiFallback() {
+        try {
+            packagesCache.clear();
+            pluginApi.getPackages().forEach(p -> packagesCache.put(p.getId(), p));
+
+            var remoteCategories = pluginApi.getCategories();
+            remoteCategories.sort(Comparator.comparingInt(Category::getOrder).thenComparingInt(Category::getId));
+            categoriesCache.clear();
+            remoteCategories.forEach(c -> categoriesCache.put(c.getId(), c));
+
+            communityGoalsCache = new CopyOnWriteArrayList<>(pluginApi.getCommunityGoals());
+            headlessWebstore = null;
+            debug("Store data source=Plugin API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size());
+        } catch (Exception e) {
+            error("Failed to refresh fallback Plugin API store data: " + e.getMessage(), e);
+            clearStoreCaches();
+        }
+    }
+
+    private void refreshStoreDataFromHeadlessApi(boolean allowThumbnailDownload) throws IOException, InterruptedException {
+        if (!headlessApi.hasPublicToken()) {
+            throw new IllegalStateException("Headless public token is missing from Plugin API /information.");
+        }
+
+        debug("Downloading store info from Headless API...");
+        Webstore webstore = headlessApi.getWebstore();
+        List<HeadlessPackage> headlessPackages = headlessApi.getPackages();
+        List<HeadlessCategory> headlessCategories = headlessApi.getCategoriesIncludingPackages();
+        Map<Integer, String> thumbnailTexturePaths = cacheHeadlessPackageThumbnails(headlessPackages, allowThumbnailDownload);
+
+        ConcurrentHashMap<Integer, Package> newPackages = new ConcurrentHashMap<>();
+        for (HeadlessPackage headlessPackage : headlessPackages) {
+            String thumbnailTexturePath = thumbnailTexturePaths.get(headlessPackage.getId());
+            Package pluginPackage = toPluginPackage(headlessPackage, thumbnailTexturePath);
+            newPackages.put(pluginPackage.getId(), pluginPackage);
+        }
+
+        headlessCategories.sort(Comparator.comparingInt(HeadlessCategory::getOrder).thenComparingInt(HeadlessCategory::getId));
+        ConcurrentHashMap<Integer, Category> newCategories = new ConcurrentHashMap<>();
+        for (HeadlessCategory headlessCategory : headlessCategories) {
+            Category pluginCategory = toPluginCategory(headlessCategory, thumbnailTexturePaths);
+            newCategories.put(pluginCategory.getId(), pluginCategory);
+        }
+
+        int accountId = tebexServerInfo == null ? 0 : tebexServerInfo.getAccount().getId();
+        if (webstore != null && webstore.getId() > 0 && accountId > 0) {
+            if (webstore.getId() != accountId) {
+                if (!warnedHeadlessAccountMismatch) {
+                    warnedHeadlessAccountMismatch = true;
+                    warnNoLog(
+                            "Headless token from Plugin API /information appears to target a different Tebex store than SecretKey.",
+                            "Verify the server key linkage in Tebex so /information returns account.public_token for the same store."
+                    );
+                }
+            } else {
+                warnedHeadlessAccountMismatch = false;
+            }
+        }
+        // Community goals are intentionally skipped for now when using Headless API.
+        CopyOnWriteArrayList<CommunityGoal> newGoals = new CopyOnWriteArrayList<>();
+
+        packagesCache.clear();
+        packagesCache.putAll(newPackages);
+        categoriesCache.clear();
+        categoriesCache.putAll(newCategories);
+        communityGoalsCache = newGoals;
+        headlessWebstore = webstore;
+        debug("Store data source=Headless API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size());
+    }
+
+    private synchronized void ensureRuntimeThumbnailWorkspace() throws IOException {
+        cleanupLegacyRuntimeThumbnailDirectory();
+        Files.createDirectories(runtimeThumbnailDirectory());
+        ensurePlaceholderThumbnailExists();
+    }
+
+    @Nonnull
+    private Path runtimeAssetPackRoot() {
+        return getDataDirectory().resolve(THUMBNAIL_CACHE_DIRECTORY);
+    }
+
+    @Nonnull
+    private Path runtimeThumbnailDirectory() {
+        return runtimeAssetRelativePath(RUNTIME_THUMBNAIL_DIRECTORY);
+    }
+
+    @Nonnull
+    private Path runtimeAssetRelativePath(@Nonnull String relativeDirectory) {
+        Path directory = runtimeAssetPackRoot();
+        for (String segment : relativeDirectory.split("/")) {
+            if (!segment.isBlank()) {
+                directory = directory.resolve(segment);
+            }
+        }
+        return directory;
+    }
+
+    @Nonnull
+    private Path runtimeThumbnailPath(@Nonnull String fileName) {
+        return runtimeThumbnailDirectory().resolve(fileName);
+    }
+
+    @Nonnull
+    private static String runtimeThumbnailTexturePath(@Nonnull String fileName) {
+        return RUNTIME_THUMBNAIL_TEXTURE_PREFIX + "/" + fileName;
+    }
+
+    @Nonnull
+    private static String runtimeThumbnail2xFileName(@Nonnull String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (!lower.endsWith(".png")) {
+            return fileName + "@2x";
+        }
+        return fileName.substring(0, fileName.length() - 4) + "@2x.png";
+    }
+
+    private void cleanupLegacyRuntimeThumbnailDirectory() {
+        for (String legacyDirectoryPath : LEGACY_RUNTIME_CACHE_DIRECTORIES) {
+            Path legacyDirectory = getDataDirectory().resolve(legacyDirectoryPath);
+            if (!Files.exists(legacyDirectory)) {
+                continue;
+            }
+
+            try (Stream<Path> stream = Files.walk(legacyDirectory)) {
+                List<Path> paths = stream.sorted(Comparator.reverseOrder()).toList();
+                for (Path path : paths) {
+                    Files.deleteIfExists(path);
+                }
+                info("Removed legacy runtime thumbnail cache at " + legacyDirectory.toAbsolutePath());
+            } catch (IOException e) {
+                warnNoLog(
+                        "Failed to remove legacy Tebex runtime thumbnail cache.",
+                        "Legacy thumbnail aliases may continue to show until files are cleaned. Path: " + legacyDirectory.toAbsolutePath()
+                );
+                error("Failed to cleanup legacy runtime thumbnail directory " + legacyDirectory.toAbsolutePath(), e);
+            }
+        }
+    }
+
+    private void ensurePlaceholderThumbnailExists() throws IOException {
+        Path placeholderPath = runtimeThumbnailPath(RUNTIME_THUMBNAIL_PLACEHOLDER);
+        String placeholder2xFileName = runtimeThumbnail2xFileName(RUNTIME_THUMBNAIL_PLACEHOLDER);
+        Path placeholder2xPath = runtimeThumbnailPath(placeholder2xFileName);
+        if (Files.isRegularFile(placeholderPath) && Files.isRegularFile(placeholder2xPath)) {
+            syncRuntimeThumbnailAliases(placeholderPath, RUNTIME_THUMBNAIL_PLACEHOLDER);
+            syncRuntimeThumbnailAliases(placeholder2xPath, placeholder2xFileName);
+            return;
+        }
+
+        BufferedImage image = new BufferedImage(RUNTIME_THUMBNAIL_SIZE, RUNTIME_THUMBNAIL_SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        try {
+            graphics.setColor(new Color(15, 27, 45, 255));
+            graphics.fillRect(0, 0, RUNTIME_THUMBNAIL_SIZE, RUNTIME_THUMBNAIL_SIZE);
+            graphics.setColor(new Color(31, 49, 74, 255));
+            graphics.fillRect(6, 6, RUNTIME_THUMBNAIL_SIZE - 12, RUNTIME_THUMBNAIL_SIZE - 12);
+            graphics.setColor(new Color(150, 170, 190, 255));
+            graphics.drawRect(6, 6, RUNTIME_THUMBNAIL_SIZE - 13, RUNTIME_THUMBNAIL_SIZE - 13);
+            graphics.drawLine(6, 6, RUNTIME_THUMBNAIL_SIZE - 7, RUNTIME_THUMBNAIL_SIZE - 7);
+            graphics.drawLine(6, RUNTIME_THUMBNAIL_SIZE - 7, RUNTIME_THUMBNAIL_SIZE - 7, 6);
+        } finally {
+            graphics.dispose();
+        }
+
+        if (!ImageIO.write(image, "png", placeholderPath.toFile())) {
+            throw new IOException("No PNG writer available for runtime placeholder thumbnail.");
+        }
+        BufferedImage image2x = normalizeThumbnailImage(image, RUNTIME_THUMBNAIL_SIZE_2X, RUNTIME_THUMBNAIL_SIZE_2X);
+        if (!ImageIO.write(image2x, "png", placeholder2xPath.toFile())) {
+            throw new IOException("No PNG writer available for runtime placeholder thumbnail @2x.");
+        }
+        syncRuntimeThumbnailAliases(placeholderPath, RUNTIME_THUMBNAIL_PLACEHOLDER);
+        syncRuntimeThumbnailAliases(placeholder2xPath, placeholder2xFileName);
+    }
+
+    @Nonnull
+    private Map<Integer, String> cacheHeadlessPackageThumbnails(
+            @Nonnull List<HeadlessPackage> headlessPackages,
+            boolean allowDownload
+    ) {
+        ConcurrentHashMap<Integer, String> texturePaths = new ConcurrentHashMap<>();
+        Set<Integer> currentPackageIds = new HashSet<>();
+
+        try {
+            ensureRuntimeThumbnailWorkspace();
+        } catch (Exception e) {
+            error("Failed to initialize runtime thumbnail workspace", e);
+            return texturePaths;
+        }
+
+        String placeholderTexture = runtimeThumbnailTexturePath(RUNTIME_THUMBNAIL_PLACEHOLDER);
+        boolean skippedRuntimeDownloadLogged = false;
+        for (HeadlessPackage headlessPackage : headlessPackages) {
+            int packageId = headlessPackage.getId();
+            currentPackageIds.add(packageId);
+
+            String sourceImageUrl = resolveImage(headlessPackage);
+            if (sourceImageUrl == null || sourceImageUrl.isBlank()) {
+                texturePaths.put(packageId, placeholderTexture);
+                packageThumbnailSources.remove(packageId);
+                continue;
+            }
+
+            String fileName = packageId + ".png";
+            String fileName2x = runtimeThumbnail2xFileName(fileName);
+            Path thumbnailPath = runtimeThumbnailPath(fileName);
+            Path thumbnailPath2x = runtimeThumbnailPath(fileName2x);
+            if (allowDownload) {
+                try {
+                    cachePackageThumbnail(packageId, sourceImageUrl);
+                    texturePaths.put(packageId, runtimeThumbnailTexturePath(fileName));
+                    continue;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    debug("Thumbnail download interrupted for package " + packageId + ": " + e.getMessage());
+                    texturePaths.put(packageId, placeholderTexture);
+                    break;
+                } catch (Exception e) {
+                    debug("Failed to cache thumbnail for package " + packageId + ": " + e.getMessage());
+                }
+            } else if (!skippedRuntimeDownloadLogged) {
+                skippedRuntimeDownloadLogged = true;
+                debug("Skipping runtime thumbnail downloads during scheduled refresh; restart server to recache package images.");
+            }
+
+            if (Files.isRegularFile(thumbnailPath)) {
+                try {
+                    ensureThumbnail2xVariant(thumbnailPath, thumbnailPath2x);
+                    syncRuntimeThumbnailAliases(thumbnailPath, fileName);
+                    syncRuntimeThumbnailAliases(thumbnailPath2x, fileName2x);
+                    texturePaths.put(packageId, runtimeThumbnailTexturePath(fileName));
+                } catch (Exception e) {
+                    debug("Failed to publish cached thumbnail alias for package " + packageId + ": " + e.getMessage());
+                    texturePaths.put(packageId, placeholderTexture);
+                }
+            } else {
+                texturePaths.put(packageId, placeholderTexture);
+            }
+        }
+
+        packageThumbnailSources.keySet().removeIf(packageId -> !currentPackageIds.contains(packageId));
+        return texturePaths;
+    }
+
+    private void cachePackageThumbnail(int packageId, @Nonnull String sourceImageUrl) throws IOException, InterruptedException {
+        String fileName = packageId + ".png";
+        String fileName2x = runtimeThumbnail2xFileName(fileName);
+        Path outputPath = runtimeThumbnailPath(fileName);
+        Path outputPath2x = runtimeThumbnailPath(fileName2x);
+        String trimmedSource = sourceImageUrl.trim();
+        String cachedSource = packageThumbnailSources.get(packageId);
+        if (trimmedSource.equals(cachedSource) && Files.isRegularFile(outputPath) && Files.isRegularFile(outputPath2x)) {
+            syncRuntimeThumbnailAliases(outputPath, fileName);
+            syncRuntimeThumbnailAliases(outputPath2x, fileName2x);
+            return;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(trimmedSource))
+                .timeout(Duration.ofSeconds(10))
+                .header("Accept", "image/*")
+                .header("User-Agent", getHttpProvider().getUserAgent())
+                .GET()
+                .build();
+
+        HttpResponse<byte[]> response = thumbnailHttpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Thumbnail request failed with status " + response.statusCode() + " for package " + packageId);
+        }
+
+        BufferedImage sourceImage = ImageIO.read(new ByteArrayInputStream(response.body()));
+        if (sourceImage == null) {
+            throw new IOException("Unsupported image format for package " + packageId);
+        }
+
+        BufferedImage thumbnail = normalizeThumbnailImage(sourceImage, RUNTIME_THUMBNAIL_SIZE, RUNTIME_THUMBNAIL_SIZE);
+        BufferedImage thumbnail2x = normalizeThumbnailImage(sourceImage, RUNTIME_THUMBNAIL_SIZE_2X, RUNTIME_THUMBNAIL_SIZE_2X);
+        Path parent = outputPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+
+        if (!ImageIO.write(thumbnail, "png", outputPath.toFile())) {
+            throw new IOException("No PNG writer available while caching package thumbnail " + packageId);
+        }
+        if (!ImageIO.write(thumbnail2x, "png", outputPath2x.toFile())) {
+            throw new IOException("No PNG writer available while caching package thumbnail @2x " + packageId);
+        }
+
+        syncRuntimeThumbnailAliases(outputPath, fileName);
+        syncRuntimeThumbnailAliases(outputPath2x, fileName2x);
+        packageThumbnailSources.put(packageId, trimmedSource);
+    }
+
+    private void ensureThumbnail2xVariant(@Nonnull Path sourcePath, @Nonnull Path sourcePath2x) throws IOException {
+        if (!Files.isRegularFile(sourcePath) || Files.isRegularFile(sourcePath2x)) {
+            return;
+        }
+
+        BufferedImage base = ImageIO.read(sourcePath.toFile());
+        if (base == null) {
+            return;
+        }
+
+        BufferedImage scaled = normalizeThumbnailImage(base, RUNTIME_THUMBNAIL_SIZE_2X, RUNTIME_THUMBNAIL_SIZE_2X);
+        if (!ImageIO.write(scaled, "png", sourcePath2x.toFile())) {
+            throw new IOException("No PNG writer available while generating cached thumbnail @2x variant.");
+        }
+    }
+
+    private void syncRuntimeThumbnailAliases(@Nonnull Path sourcePath, @Nonnull String fileName) throws IOException {
+        if (!Files.isRegularFile(sourcePath)) {
+            return;
+        }
+
+        for (String aliasDirectory : RUNTIME_THUMBNAIL_COMPATIBILITY_ALIAS_DIRECTORIES) {
+            Path aliasPath = runtimeAssetRelativePath(aliasDirectory).resolve(fileName);
+            Path parent = aliasPath.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.copy(sourcePath, aliasPath, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    @Nonnull
+    public synchronized JarRewriteTestResult rewriteOwnJarForTest() {
+        Path jarPath = resolveOwnJarPath();
+        if (jarPath == null) {
+            return new JarRewriteTestResult(
+                    false,
+                    "Plugin is not running from a .jar file, so self-rewrite test is not available in this environment."
+            );
+        }
+
+        try {
+            ensureRuntimeThumbnailWorkspace();
+        } catch (Exception e) {
+            error("Failed to initialize runtime thumbnail workspace before jar rewrite test", e);
+            return new JarRewriteTestResult(false, "Failed to prepare runtime thumbnail workspace: " + e.getMessage());
+        }
+
+        LinkedHashSet<Path> thumbnailFiles = new LinkedHashSet<>();
+        try (Stream<Path> stream = Files.list(runtimeThumbnailDirectory())) {
+            stream.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName() != null)
+                    .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
+                    .sorted()
+                    .forEach(thumbnailFiles::add);
+        } catch (IOException e) {
+            error("Failed to list runtime thumbnails for jar rewrite test", e);
+            return new JarRewriteTestResult(false, "Failed to read runtime thumbnail files: " + e.getMessage());
+        }
+
+        if (thumbnailFiles.isEmpty()) {
+            return new JarRewriteTestResult(false, "No runtime thumbnails found to inject into the jar.");
+        }
+
+        Path tempJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.tmp");
+        Path backupJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.bak");
+
+        try {
+            Files.deleteIfExists(tempJarPath);
+        } catch (IOException ignored) {
+            // Best-effort cleanup before we start.
+        }
+
+        try (
+                ZipInputStream input = new ZipInputStream(Files.newInputStream(jarPath));
+                ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(tempJarPath))
+        ) {
+            ZipEntry entry;
+            while ((entry = input.getNextEntry()) != null) {
+                String entryName = entry.getName().replace('\\', '/');
+                if (isRuntimeThumbnailJarEntry(entryName)) {
+                    continue;
+                }
+                copyZipEntry(input, output, entry);
+            }
+
+            for (Path thumbnailFile : thumbnailFiles) {
+                String fileName = thumbnailFile.getFileName().toString();
+                byte[] bytes = Files.readAllBytes(thumbnailFile);
+                writeZipEntry(output, "Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/" + fileName, bytes);
+                writeZipEntry(output, "UI/Custom/Pages/Assets/TebexStoreThumbnails/" + fileName, bytes);
+                writeZipEntry(output, "Common/TebexStoreThumbnails/" + fileName, bytes);
+                writeZipEntry(output, "TebexStoreThumbnails/" + fileName, bytes);
+            }
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(tempJarPath);
+            } catch (IOException ignored) {
+                // No-op
+            }
+            error("Failed to build rewritten jar candidate at " + tempJarPath.toAbsolutePath(), e);
+            return new JarRewriteTestResult(false, "Failed while rebuilding jar contents: " + e.getMessage());
+        }
+
+        try {
+            Files.copy(jarPath, backupJarPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(tempJarPath);
+            } catch (IOException ignored) {
+                // No-op
+            }
+            error("Failed to create backup jar before rewrite test at " + backupJarPath.toAbsolutePath(), e);
+            return new JarRewriteTestResult(false, "Failed to create backup jar before rewrite: " + e.getMessage());
+        }
+
+        try {
+            try {
+                Files.move(tempJarPath, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(tempJarPath, jarPath, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (Exception e) {
+            Path stagedJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.ready.jar");
+            try {
+                Files.move(tempJarPath, stagedJarPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception stageException) {
+                try {
+                    Files.deleteIfExists(tempJarPath);
+                } catch (IOException ignored) {
+                    // No-op
+                }
+                error("Failed to stage rewritten plugin jar at " + stagedJarPath.toAbsolutePath(), stageException);
+                error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
+                return new JarRewriteTestResult(
+                        false,
+                        "Jar replacement failed (likely file lock) and staging also failed. Backup at: " + backupJarPath.toAbsolutePath()
+                );
+            }
+
+            error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
+            warnNoLog(
+                    "Running plugin jar is locked; staged patched jar for next restart.",
+                    "Disable current jar and promote staged jar after shutdown: current=" + jarPath.getFileName()
+                            + ", staged=" + stagedJarPath.getFileName()
+            );
+            return new JarRewriteTestResult(
+                    true,
+                    "Jar is locked while running. Staged patched jar: " + stagedJarPath.toAbsolutePath()
+                            + ". After stopping the server, rename current jar to .disabled and rename staged jar to " + jarPath.getFileName() + "."
+            );
+        }
+
+        info("Jar rewrite test succeeded. Updated " + thumbnailFiles.size() + " runtime thumbnail(s) in " + jarPath.toAbsolutePath());
+        warnNoLog(
+                "Plugin jar was rewritten successfully for test purposes.",
+                "A full server restart is required before the updated jar resources can be used."
+        );
+        return new JarRewriteTestResult(
+                true,
+                "Jar rewrite succeeded. Restart the server to test resources from inside the rewritten jar."
+        );
+    }
+
+    @Nullable
+    private static Path resolveOwnJarPath() {
+        try {
+            URI location = TebexPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+            Path path = Path.of(location);
+            if (Files.isDirectory(path)) {
+                return null;
+            }
+            String fileName = path.getFileName() == null ? "" : path.getFileName().toString().toLowerCase(Locale.ROOT);
+            if (!fileName.endsWith(".jar")) {
+                return null;
+            }
+            return path;
+        } catch (URISyntaxException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static boolean isRuntimeThumbnailJarEntry(@Nonnull String entryName) {
+        return entryName.startsWith("Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/")
+                || entryName.startsWith("UI/Custom/Pages/Assets/TebexStoreThumbnails/")
+                || entryName.startsWith("Common/TebexStoreThumbnails/")
+                || entryName.startsWith("TebexStoreThumbnails/");
+    }
+
+    private static void copyZipEntry(
+            @Nonnull ZipInputStream input,
+            @Nonnull ZipOutputStream output,
+            @Nonnull ZipEntry source
+    ) throws IOException {
+        ZipEntry target = new ZipEntry(source.getName());
+        if (source.getTime() > 0) {
+            target.setTime(source.getTime());
+        }
+        if (source.getComment() != null) {
+            target.setComment(source.getComment());
+        }
+        output.putNextEntry(target);
+
+        byte[] buffer = new byte[8192];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            output.write(buffer, 0, read);
+        }
+        output.closeEntry();
+    }
+
+    private static void writeZipEntry(
+            @Nonnull ZipOutputStream output,
+            @Nonnull String entryName,
+            @Nonnull byte[] bytes
+    ) throws IOException {
+        ZipEntry entry = new ZipEntry(entryName);
+        entry.setTime(System.currentTimeMillis());
+        output.putNextEntry(entry);
+        output.write(bytes);
+        output.closeEntry();
+    }
+
+    @Nonnull
+    private static BufferedImage normalizeThumbnailImage(@Nonnull BufferedImage source, int targetWidth, int targetHeight) {
+        BufferedImage output = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = output.createGraphics();
+        try {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.setColor(new Color(15, 27, 45, 255));
+            graphics.fillRect(0, 0, targetWidth, targetHeight);
+
+            int sourceWidth = Math.max(1, source.getWidth());
+            int sourceHeight = Math.max(1, source.getHeight());
+            double scale = Math.min((double) targetWidth / sourceWidth, (double) targetHeight / sourceHeight);
+
+            int drawWidth = Math.max(1, (int) Math.round(sourceWidth * scale));
+            int drawHeight = Math.max(1, (int) Math.round(sourceHeight * scale));
+            int offsetX = (targetWidth - drawWidth) / 2;
+            int offsetY = (targetHeight - drawHeight) / 2;
+            graphics.drawImage(source, offsetX, offsetY, drawWidth, drawHeight, null);
+        } finally {
+            graphics.dispose();
+        }
+        return output;
+    }
+
+    private static Category toPluginCategory(
+            @Nonnull HeadlessCategory headlessCategory,
+            @Nonnull Map<Integer, String> thumbnailTexturePaths
+    ) {
+        List<CategoryPackage> pluginPackages = new ArrayList<>();
+        List<HeadlessPackage> headlessPackages = headlessCategory.getPackages();
+        if (headlessPackages != null) {
+            for (int i = 0; i < headlessPackages.size(); i++) {
+                HeadlessPackage headlessPackage = headlessPackages.get(i);
+                pluginPackages.add(
+                        toPluginCategoryPackage(
+                                headlessPackage,
+                                i,
+                                thumbnailTexturePaths.get(headlessPackage.getId())
+                        )
+                );
+            }
+        }
+
+        return new Category(
+                headlessCategory.getId(),
+                headlessCategory.getOrder(),
+                safeText(headlessCategory.getName()),
+                null,
+                false,
+                pluginPackages
+        );
+    }
+
+    private static CategoryPackage toPluginCategoryPackage(
+            @Nonnull HeadlessPackage headlessPackage,
+            int order,
+            @Nullable String thumbnailTexturePath
+    ) {
+        double discount = headlessPackage.getDiscount();
+        CategoryPackage.Sale sale = new CategoryPackage.Sale(discount > 0, discount);
+        return new CategoryPackage(
+                headlessPackage.getId(),
+                order,
+                safeText(headlessPackage.getName()),
+                resolvePrice(headlessPackage),
+                safeText(headlessPackage.getDescription()),
+                chooseImage(thumbnailTexturePath, resolveImage(headlessPackage)),
+                null,
+                sale
+        );
+    }
+
+    private static Package toPluginPackage(
+            @Nonnull HeadlessPackage headlessPackage,
+            @Nullable String thumbnailTexturePath
+    ) {
+        HeadlessPackage.Category sourceCategory = headlessPackage.getCategory();
+        Package.Category pluginCategory = sourceCategory == null
+                ? new Package.Category(0, "")
+                : new Package.Category(sourceCategory.getId(), safeText(sourceCategory.getName()));
+
+        String description = safeText(headlessPackage.getDescription());
+        return new Package(
+                headlessPackage.getId(),
+                safeText(headlessPackage.getName()),
+                description,
+                description,
+                chooseImage(thumbnailTexturePath, resolveImage(headlessPackage)),
+                resolvePrice(headlessPackage),
+                0,
+                null,
+                safeText(headlessPackage.getType()),
+                pluginCategory,
+                0,
+                null,
+                0,
+                null,
+                List.of(),
+                List.of(),
+                false,
+                false,
+                true,
+                null,
+                false,
+                headlessPackage.isDisableQuantity(),
+                false,
+                false,
+                false,
+                false,
+                false
+        );
+    }
+
+    @Nonnull
+    private static List<CommunityGoal> toPluginCommunityGoals(@Nonnull List<SidebarModule> sidebarModules, int accountId) {
+        List<CommunityGoal> goals = new ArrayList<>();
+        for (SidebarModule module : sidebarModules) {
+            if (module == null || !"community_goal".equalsIgnoreCase(module.getType()) || module.getData() == null) {
+                continue;
+            }
+
+            String name = getJsonString(module.getData(), "header", "Community Goal");
+            double target = getJsonDouble(module.getData(), "target", 0d);
+            double percentage = getJsonDouble(module.getData(), "percentage", 0d);
+            double totalPayments = getJsonDouble(module.getData(), "total_payments", Double.NaN);
+            double current = !Double.isNaN(totalPayments)
+                    ? totalPayments
+                    : (target > 0 ? (percentage / 100d) * target : percentage);
+            int timesAchieved = (int) Math.round(getJsonDouble(module.getData(), "times_achieved", 0d));
+            CommunityGoal.Status status = percentage >= 100d ? CommunityGoal.Status.COMPLETED : CommunityGoal.Status.ACTIVE;
+
+            goals.add(new CommunityGoal(
+                    module.getId(),
+                    module.getStartTime(),
+                    module.getEndTime(),
+                    accountId,
+                    name,
+                    "Imported from Headless sidebar module",
+                    null,
+                    target,
+                    current,
+                    0,
+                    null,
+                    timesAchieved,
+                    status,
+                    0
+            ));
+        }
+        return goals;
+    }
+
+    private static double resolvePrice(@Nonnull HeadlessPackage headlessPackage) {
+        if (headlessPackage.getTotalPrice() > 0d) {
+            return headlessPackage.getTotalPrice();
+        }
+        return headlessPackage.getBasePrice();
+    }
+
+    @Nullable
+    private static String resolveImage(@Nonnull HeadlessPackage headlessPackage) {
+        if (headlessPackage.getImage() != null && !headlessPackage.getImage().isBlank()) {
+            return headlessPackage.getImage();
+        }
+        if (headlessPackage.getMedia() != null) {
+            for (HeadlessPackage.PackageMedia media : headlessPackage.getMedia()) {
+                if (media != null && media.getUrl() != null && !media.getUrl().isBlank()) {
+                    return media.getUrl();
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String chooseImage(@Nullable String preferredImage, @Nullable String fallbackImage) {
+        if (preferredImage != null && !preferredImage.isBlank()) {
+            return preferredImage;
+        }
+        if (fallbackImage != null && !fallbackImage.isBlank()) {
+            return fallbackImage;
+        }
+        return null;
+    }
+
+    @Nonnull
+    private static String safeText(@Nullable String value) {
+        if (value == null) {
+            return "";
+        }
+        return value;
+    }
+
+    private static double getJsonDouble(@Nonnull com.google.gson.JsonObject jsonObject, @Nonnull String key, double fallback) {
+        if (!jsonObject.has(key) || jsonObject.get(key).isJsonNull()) {
+            return fallback;
+        }
+        try {
+            return jsonObject.get(key).getAsDouble();
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    @Nonnull
+    private static String getJsonString(@Nonnull com.google.gson.JsonObject jsonObject, @Nonnull String key, @Nonnull String fallback) {
+        if (!jsonObject.has(key) || jsonObject.get(key).isJsonNull()) {
+            return fallback;
+        }
+        try {
+            String value = jsonObject.get(key).getAsString();
+            return value == null || value.isBlank() ? fallback : value;
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    private void clearStoreCaches() {
+        packagesCache.clear();
+        categoriesCache.clear();
+        communityGoalsCache.clear();
+        packageThumbnailSources.clear();
+        headlessWebstore = null;
+    }
+
+    @Nonnull
+    public String getStoreUrl() {
+        if (headlessWebstore != null && headlessWebstore.getWebstoreUrl() != null && !headlessWebstore.getWebstoreUrl().isBlank()) {
+            return headlessWebstore.getWebstoreUrl();
+        }
+        if (tebexServerInfo == null || tebexServerInfo.getAccount() == null || tebexServerInfo.getAccount().getDomain() == null) {
+            return "";
+        }
+
+        String domain = tebexServerInfo.getAccount().getDomain();
+        if (domain.startsWith("https://") || domain.startsWith("http://")) {
+            return domain;
+        }
+        return "https://" + domain;
+    }
+
+    @Nonnull
+    public String getStoreName() {
+        if (headlessWebstore != null && headlessWebstore.getName() != null && !headlessWebstore.getName().isBlank()) {
+            return headlessWebstore.getName();
+        }
+        if (tebexServerInfo != null && tebexServerInfo.getAccount() != null && tebexServerInfo.getAccount().getName() != null) {
+            return tebexServerInfo.getAccount().getName();
+        }
+        return "Tebex Store";
     }
 
     private void handleOfflineCommands() {
@@ -472,6 +1331,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         super.shutdown();
         debug("Shutting down Tebex plugin");
         this.tebexServerInfo = null;
+        this.headlessWebstore = null;
         if (this.tasks != null) {
             this.tasks.shutdownNow();
         }
@@ -672,12 +1532,34 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return VERSION;
     }
 
+    public static final class JarRewriteTestResult {
+        private final boolean success;
+        @Nonnull private final String message;
+
+        public JarRewriteTestResult(boolean success, @Nonnull String message) {
+            this.success = success;
+            this.message = message;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        @Nonnull
+        public String message() {
+            return message;
+        }
+    }
+
     @Data
     public static class TebexConfig {
         public static final BuilderCodec<TebexPlugin.TebexConfig> CODEC;
 
         private @Nonnull String secretKey = "";
+        private String headlessPrivateKey = "";
         private boolean buyCommandEnabled = true;
+        private boolean storeBrowserEnabled = true;
+        private boolean cartEnabled = true;
         private boolean debugMode = false;
         private String buyCommandMessage = "Buy packages at {url}";
         private String buyCommandName = "buy";
@@ -686,10 +1568,16 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             CODEC =BuilderCodec.builder(TebexPlugin.TebexConfig.class, TebexPlugin.TebexConfig::new)
                     .append(new KeyedCodec<String>("SecretKey", Codec.STRING),
                             TebexConfig::setSecretKey, TebexConfig::getSecretKey).add()
+                    .append(new KeyedCodec<String>("HeadlessPrivateKey", Codec.STRING),
+                            TebexConfig::setHeadlessPrivateKey, TebexConfig::getHeadlessPrivateKey).add()
                     .append(new KeyedCodec<String>("BuyCommandName", Codec.STRING),
                             TebexConfig::setBuyCommandName, TebexConfig::getBuyCommandName).add()
                     .append(new KeyedCodec<Boolean>("BuyCommandEnabled", Codec.BOOLEAN),
                             TebexConfig::setBuyCommandEnabled, TebexConfig::isBuyCommandEnabled).add()
+                    .append(new KeyedCodec<Boolean>("StoreBrowserEnabled", Codec.BOOLEAN),
+                            TebexConfig::setStoreBrowserEnabled, TebexConfig::isStoreBrowserEnabled).add()
+                    .append(new KeyedCodec<Boolean>("CartEnabled", Codec.BOOLEAN),
+                            TebexConfig::setCartEnabled, TebexConfig::isCartEnabled).add()
                     .append(new KeyedCodec<Boolean>("DebugMode", Codec.BOOLEAN),
                             TebexConfig::setDebugMode, TebexConfig::isDebugMode).add()
                     .append(new KeyedCodec<String>("BuyCommandMessage", Codec.STRING),

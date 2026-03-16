@@ -16,6 +16,8 @@ public class ServerInformation {
         private final int id;
         private final String domain;
         private final String name;
+        @SerializedName(value = "public_token", alternate = {"public_key"})
+        private final String publicToken;
         private final Currency currency;
         private final boolean onlineMode;
         private final String gameType;

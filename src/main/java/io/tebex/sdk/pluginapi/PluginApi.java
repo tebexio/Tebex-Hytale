@@ -7,6 +7,8 @@ import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import io.tebex.sdk.common.Verb;
 import io.tebex.sdk.common.gson.BooleanTypeAdapter;
+import io.tebex.sdk.headlessapi.models.BasketLinks;
+import io.tebex.sdk.headlessapi.models.BasketLinksTypeAdapter;
 import io.tebex.sdk.http.IHttpProvider;
 import io.tebex.sdk.pluginapi.models.*;
 import io.tebex.sdk.pluginapi.models.Package;
@@ -35,6 +37,7 @@ public class PluginApi {
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
             .registerTypeAdapter(Boolean.class, new BooleanTypeAdapter())
             .registerTypeAdapter(boolean.class, new BooleanTypeAdapter())
+            .registerTypeAdapter(BasketLinks.class, new BasketLinksTypeAdapter())
             .create();
 
     /** Interface for telling a plugin what to do */
@@ -50,7 +53,12 @@ public class PluginApi {
 
     /** @return GET /information, the {@link ServerInformation} about the linked store. */
     public ServerInformation getServerInformation() throws IOException, InterruptedException {
-        return GSON.fromJson(httpApi(Verb.GET, "information"), ServerInformation.class);
+        return GSON.fromJson(getServerInformationRaw(), ServerInformation.class);
+    }
+
+    /** @return Raw JSON from GET /information. */
+    public String getServerInformationRaw() throws IOException, InterruptedException {
+        return httpApi(Verb.GET, "information");
     }
 
     public List<Category> getCategories() throws IOException, InterruptedException {

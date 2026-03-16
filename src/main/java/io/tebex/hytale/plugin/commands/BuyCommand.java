@@ -28,8 +28,14 @@ public class BuyCommand extends AbstractPlayerCommand {
             return;
         }
 
-        boolean opened = BuyGui.getInstance().open(store, ref, playerRef, world);
-        if (!opened) {
+        var plugin = TebexPlugin.get();
+        boolean storeBrowserEnabled = plugin.getConfig().get() != null && plugin.getConfig().get().isStoreBrowserEnabled();
+        boolean opened = false;
+        if (storeBrowserEnabled) {
+            opened = BuyGui.getInstance().open(store, ref, playerRef, world);
+        }
+
+        if (!storeBrowserEnabled || !opened) {
             sendConfiguredBuyMessage(ctx);
         }
     }
@@ -41,7 +47,10 @@ public class BuyCommand extends AbstractPlayerCommand {
             return;
         }
 
-        var domain = plugin.getTebexServerInfo().getAccount().getDomain();
+        var domain = plugin.getStoreUrl();
+        if (domain == null || domain.isBlank()) {
+            domain = plugin.getTebexServerInfo().getAccount().getDomain();
+        }
         var clickable = false;
         if (message.contains("{url}")) {
             message = message.replace("{url}", domain);

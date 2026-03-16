@@ -49,12 +49,17 @@ There are more in-depth configuration options available in the plugin's configur
 ```json
 {
     "SecretKey": "qwertyuiopasdfghjklzxcvbnm9876543210",
+    "HeadlessPrivateKey": "",
     "BuyCommandName": "buy",
     "BuyCommandEnabled": true,
+    "StoreBrowserEnabled": true,
+    "CartEnabled": true,
     "BuyCommandMessage": "Buy packages at our store: {url}",
     "DebugMode": false
 }
 ```
+
+The Headless API public token is now sourced automatically from Plugin API `/information` as `account.public_token`.
 
 Below is a breakdown of each configuration parameter and its function:
 
