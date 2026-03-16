@@ -25,16 +25,6 @@ $C.@DecoratedContainer {
       Anchor: (Width: 860, Right: 14);
       LayoutMode: Top;
 
-      Group #StaticImageTest {
-        Anchor: (Width: 128, Height: 128, Bottom: 12);
-        Background: #000000(0.18);
-
-        Group {
-          Anchor: (Full: 6);
-          Background: (TexturePath: "Assets/OIP_UI.png");
-        }
-      }
-
       Group #HeaderTitleSlot {
         Anchor: (Bottom: 2);
       }

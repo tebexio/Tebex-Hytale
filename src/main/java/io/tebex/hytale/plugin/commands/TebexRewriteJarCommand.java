@@ -13,19 +13,35 @@ public class TebexRewriteJarCommand extends CommandBase {
     private final TebexPlugin plugin = TebexPlugin.get();
 
     public TebexRewriteJarCommand() {
-        super("rewritejar", "commands.tebex.rewritejar");
+        super("rebuild", "commands.tebex.rebuild");
     }
 
     @Override
     protected void executeSync(@Nonnull CommandContext ctx) {
         CommandUtil.requirePermission(ctx.sender(), HytalePermissions.fromCommand("tebex.debug"));
 
-        TebexPlugin.JarRewriteTestResult result = plugin.rewriteOwnJarForTest();
-        ctx.sendMessage(Message.raw(result.message()));
+        TebexPlugin.JarRebuildResult result = plugin.rebuildOwnJar();
+        ctx.sendMessage(Message.raw(result.summary()));
+        if (result.detail() != null && !result.detail().isBlank()) {
+            ctx.sendMessage(Message.raw("Reason: " + result.detail()));
+        }
+        if (result.nextStep() != null && !result.nextStep().isBlank()) {
+            ctx.sendMessage(Message.raw("Next: " + result.nextStep()));
+        }
+
         if (result.success()) {
-            plugin.info("[JarRewriteTest] " + result.message());
+            if (result.staged()) {
+                plugin.warn("[JarRebuild] " + result.summary(), result.nextStep() == null ? "" : result.nextStep());
+            } else {
+                plugin.info("[JarRebuild] " + result.summary());
+            }
         } else {
-            plugin.warn("[JarRewriteTest] " + result.message(), "See server logs above for detailed jar rewrite failure output.");
+            plugin.warn(
+                    "[JarRebuild] " + result.summary(),
+                    (result.detail() == null || result.detail().isBlank())
+                            ? "See server logs above for detailed rebuild failure output."
+                            : result.detail()
+            );
         }
     }
 }

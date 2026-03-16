@@ -78,13 +78,19 @@ import java.util.zip.ZipOutputStream;
 public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public static final String VERSION = "{{VERSION}}";
     private static final String THUMBNAIL_CACHE_DIRECTORY = "thumbnail-cache";
-    private static final String RUNTIME_THUMBNAIL_DIRECTORY = "UI/Custom/Pages/Assets/TebexStoreThumbnails";
-    private static final String RUNTIME_THUMBNAIL_TEXTURE_PREFIX = "UI/Custom/Pages/Assets/TebexStoreThumbnails";
-    private static final List<String> RUNTIME_THUMBNAIL_COMPATIBILITY_ALIAS_DIRECTORIES = List.of(
-            "TebexStoreThumbnails",
-            "Common/TebexStoreThumbnails"
+    private static final String RUNTIME_PAGE_DIRECTORY = "Common/UI/Custom/Pages";
+    private static final String RUNTIME_THUMBNAIL_DIRECTORY = "Common/UI/Custom/Pages/Assets";
+    private static final String RUNTIME_THUMBNAIL_JAR_DIRECTORY = "Common/UI/Custom/Pages/Assets";
+    private static final String RUNTIME_THUMBNAIL_TEXTURE_PREFIX = "Assets";
+    private static final String RUNTIME_CARD_TEMPLATE_PREFIX = "TebexGeneratedStoreCard_";
+    private static final String RUNTIME_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedStoreCardWide_";
+    private static final List<String> LEGACY_RUNTIME_CACHE_DIRECTORIES = List.of(
+            "runtime-assets",
+            THUMBNAIL_CACHE_DIRECTORY + "/TebexStoreThumbnails",
+            THUMBNAIL_CACHE_DIRECTORY + "/Common/TebexStoreThumbnails",
+            THUMBNAIL_CACHE_DIRECTORY + "/Common/UI/Custom/Pages/Assets/TebexStoreThumbnails",
+            THUMBNAIL_CACHE_DIRECTORY + "/UI"
     );
-    private static final List<String> LEGACY_RUNTIME_CACHE_DIRECTORIES = List.of("runtime-assets");
     private static final String RUNTIME_THUMBNAIL_PLACEHOLDER = "_placeholder.png";
     private static final int RUNTIME_THUMBNAIL_SIZE = 96;
     private static final int RUNTIME_THUMBNAIL_SIZE_2X = 192;
@@ -454,6 +460,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private Path runtimePageDirectory() {
+        return runtimeAssetRelativePath(RUNTIME_PAGE_DIRECTORY);
+    }
+
+    @Nonnull
     private Path runtimeAssetRelativePath(@Nonnull String relativeDirectory) {
         Path directory = runtimeAssetPackRoot();
         for (String segment : relativeDirectory.split("/")) {
@@ -470,8 +481,23 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private Path runtimeThumbnailCardTemplatePath(@Nonnull String imageFileName, boolean wide) {
+        return runtimePageDirectory().resolve(runtimeThumbnailCardTemplateFileName(imageFileName, wide));
+    }
+
+    @Nonnull
     private static String runtimeThumbnailTexturePath(@Nonnull String fileName) {
         return RUNTIME_THUMBNAIL_TEXTURE_PREFIX + "/" + fileName;
+    }
+
+    @Nonnull
+    public static String runtimeThumbnailCardTemplateUiPath(@Nonnull String texturePath, boolean wide) {
+        String fileName = texturePath.replace('\\', '/');
+        int lastSlash = fileName.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileName = fileName.substring(lastSlash + 1);
+        }
+        return "Pages/" + runtimeThumbnailCardTemplateFileName(fileName, wide);
     }
 
     @Nonnull
@@ -481,6 +507,20 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             return fileName + "@2x";
         }
         return fileName.substring(0, fileName.length() - 4) + "@2x.png";
+    }
+
+    @Nonnull
+    private static String runtimeThumbnailCardTemplateFileName(@Nonnull String imageFileName, boolean wide) {
+        String base = imageFileName.replace('\\', '/');
+        int lastSlash = base.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            base = base.substring(lastSlash + 1);
+        }
+        if (base.toLowerCase(Locale.ROOT).endsWith(".png")) {
+            base = base.substring(0, base.length() - 4);
+        }
+        String safeBase = base.replaceAll("[^A-Za-z0-9_-]", "_");
+        return (wide ? RUNTIME_CARD_WIDE_TEMPLATE_PREFIX : RUNTIME_CARD_TEMPLATE_PREFIX) + safeBase + ".ui";
     }
 
     private void cleanupLegacyRuntimeThumbnailDirectory() {
@@ -511,8 +551,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         String placeholder2xFileName = runtimeThumbnail2xFileName(RUNTIME_THUMBNAIL_PLACEHOLDER);
         Path placeholder2xPath = runtimeThumbnailPath(placeholder2xFileName);
         if (Files.isRegularFile(placeholderPath) && Files.isRegularFile(placeholder2xPath)) {
-            syncRuntimeThumbnailAliases(placeholderPath, RUNTIME_THUMBNAIL_PLACEHOLDER);
-            syncRuntimeThumbnailAliases(placeholder2xPath, placeholder2xFileName);
+            ensureThumbnailCardTemplates(RUNTIME_THUMBNAIL_PLACEHOLDER);
             return;
         }
 
@@ -538,8 +577,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         if (!ImageIO.write(image2x, "png", placeholder2xPath.toFile())) {
             throw new IOException("No PNG writer available for runtime placeholder thumbnail @2x.");
         }
-        syncRuntimeThumbnailAliases(placeholderPath, RUNTIME_THUMBNAIL_PLACEHOLDER);
-        syncRuntimeThumbnailAliases(placeholder2xPath, placeholder2xFileName);
+        ensureThumbnailCardTemplates(RUNTIME_THUMBNAIL_PLACEHOLDER);
     }
 
     @Nonnull
@@ -595,8 +633,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             if (Files.isRegularFile(thumbnailPath)) {
                 try {
                     ensureThumbnail2xVariant(thumbnailPath, thumbnailPath2x);
-                    syncRuntimeThumbnailAliases(thumbnailPath, fileName);
-                    syncRuntimeThumbnailAliases(thumbnailPath2x, fileName2x);
+                    ensureThumbnailCardTemplates(fileName);
                     texturePaths.put(packageId, runtimeThumbnailTexturePath(fileName));
                 } catch (Exception e) {
                     debug("Failed to publish cached thumbnail alias for package " + packageId + ": " + e.getMessage());
@@ -619,8 +656,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         String trimmedSource = sourceImageUrl.trim();
         String cachedSource = packageThumbnailSources.get(packageId);
         if (trimmedSource.equals(cachedSource) && Files.isRegularFile(outputPath) && Files.isRegularFile(outputPath2x)) {
-            syncRuntimeThumbnailAliases(outputPath, fileName);
-            syncRuntimeThumbnailAliases(outputPath2x, fileName2x);
+            ensureThumbnailCardTemplates(fileName);
             return;
         }
 
@@ -655,8 +691,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             throw new IOException("No PNG writer available while caching package thumbnail @2x " + packageId);
         }
 
-        syncRuntimeThumbnailAliases(outputPath, fileName);
-        syncRuntimeThumbnailAliases(outputPath2x, fileName2x);
+        ensureThumbnailCardTemplates(fileName);
         packageThumbnailSources.put(packageId, trimmedSource);
     }
 
@@ -676,28 +711,90 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 
-    private void syncRuntimeThumbnailAliases(@Nonnull Path sourcePath, @Nonnull String fileName) throws IOException {
-        if (!Files.isRegularFile(sourcePath)) {
-            return;
-        }
-
-        for (String aliasDirectory : RUNTIME_THUMBNAIL_COMPATIBILITY_ALIAS_DIRECTORIES) {
-            Path aliasPath = runtimeAssetRelativePath(aliasDirectory).resolve(fileName);
-            Path parent = aliasPath.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Files.copy(sourcePath, aliasPath, StandardCopyOption.REPLACE_EXISTING);
-        }
+    private void ensureThumbnailCardTemplates(@Nonnull String imageFileName) throws IOException {
+        Files.createDirectories(runtimePageDirectory());
+        Files.writeString(
+                runtimeThumbnailCardTemplatePath(imageFileName, false),
+                buildRuntimeThumbnailCardTemplate(imageFileName, false)
+        );
+        Files.writeString(
+                runtimeThumbnailCardTemplatePath(imageFileName, true),
+                buildRuntimeThumbnailCardTemplate(imageFileName, true)
+        );
     }
 
     @Nonnull
-    public synchronized JarRewriteTestResult rewriteOwnJarForTest() {
+    private static String buildRuntimeThumbnailCardTemplate(@Nonnull String imageFileName, boolean wide) {
+        String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
+        String anchor = wide
+                ? "(Width: 840, Height: 146, Bottom: 12)"
+                : "(Width: 414, Height: 146, Bottom: 12, Right: 12)";
+
+        return "$C = \"../Common.ui\";\n"
+                + "\n"
+                + "Button #Card {\n"
+                + "  Anchor: " + anchor + ";\n"
+                + "  Padding: (Full: 10);\n"
+                + "  LayoutMode: Left;\n"
+                + "  Background: #0f1b2d(0.88);\n"
+                + "  Style: (\n"
+                + "    Hovered: (Background: #16253a(0.95)),\n"
+                + "    Pressed: (Background: #1c2f4a(0.95))\n"
+                + "  );\n"
+                + "\n"
+                + "  Group #PackageThumbnailFrame {\n"
+                + "    Anchor: (Width: 96, Height: 96, Right: 10);\n"
+                + "    Background: #08111b(0.88);\n"
+                + "    Padding: (Full: 4);\n"
+                + "\n"
+                + "    Group #PackageThumbnail {\n"
+                + "      Anchor: (Full: 0);\n"
+                + "      Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  Group {\n"
+                + "    LayoutMode: Top;\n"
+                + "    FlexWeight: 1;\n"
+                + "\n"
+                + "    Label #SubcommandName {\n"
+                + "      Style: (\n"
+                + "        FontSize: 18,\n"
+                + "        RenderBold: true,\n"
+                + "        TextColor: $C.@ColorDefault,\n"
+                + "        RenderUppercase: true\n"
+                + "      );\n"
+                + "      Anchor: (Bottom: 4);\n"
+                + "    }\n"
+                + "\n"
+                + "    Label #SubcommandUsage {\n"
+                + "      Style: (\n"
+                + "        FontSize: 13,\n"
+                + "        TextColor: $C.@ColorBlueAccent,\n"
+                + "        RenderBold: true\n"
+                + "      );\n"
+                + "      Anchor: (Bottom: 4);\n"
+                + "    }\n"
+                + "\n"
+                + "    Label #SubcommandDescription {\n"
+                + "      Style: (\n"
+                + "        FontSize: 12,\n"
+                + "        TextColor: $C.@ColorDefaultLabel,\n"
+                + "        Wrap: true\n"
+                + "      );\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n";
+    }
+
+    @Nonnull
+    public synchronized JarRebuildResult rebuildOwnJar() {
         Path jarPath = resolveOwnJarPath();
         if (jarPath == null) {
-            return new JarRewriteTestResult(
-                    false,
-                    "Plugin is not running from a .jar file, so self-rewrite test is not available in this environment."
+            return JarRebuildResult.failure(
+                    "Plugin is not running from a .jar file.",
+                    "The current plugin code source is a directory, so Tebex cannot rebuild an on-disk jar from this environment.",
+                    "Build the plugin and run the packaged .jar before using /tebex rebuild."
             );
         }
 
@@ -705,27 +802,54 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             ensureRuntimeThumbnailWorkspace();
         } catch (Exception e) {
             error("Failed to initialize runtime thumbnail workspace before jar rewrite test", e);
-            return new JarRewriteTestResult(false, "Failed to prepare runtime thumbnail workspace: " + e.getMessage());
+            return JarRebuildResult.failure(
+                    "Failed to prepare the runtime thumbnail workspace.",
+                    describeFailure(e),
+                    "Check the Tebex plugin data directory permissions and try /tebex rebuild again."
+            );
         }
 
-        LinkedHashSet<Path> thumbnailFiles = new LinkedHashSet<>();
+        LinkedHashSet<Path> runtimeAssetFiles = new LinkedHashSet<>();
         try (Stream<Path> stream = Files.list(runtimeThumbnailDirectory())) {
             stream.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName() != null)
                     .filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".png"))
                     .sorted()
-                    .forEach(thumbnailFiles::add);
+                    .forEach(runtimeAssetFiles::add);
         } catch (IOException e) {
             error("Failed to list runtime thumbnails for jar rewrite test", e);
-            return new JarRewriteTestResult(false, "Failed to read runtime thumbnail files: " + e.getMessage());
+            return JarRebuildResult.failure(
+                    "Failed to read cached package thumbnails.",
+                    describeFailure(e),
+                    "Open the store at least once so the server can cache package images, then run /tebex rebuild again."
+            );
         }
 
-        if (thumbnailFiles.isEmpty()) {
-            return new JarRewriteTestResult(false, "No runtime thumbnails found to inject into the jar.");
+        try (Stream<Path> stream = Files.list(runtimePageDirectory())) {
+            stream.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName() != null)
+                    .filter(path -> isGeneratedRuntimeCardTemplateFileName(path.getFileName().toString()))
+                    .sorted()
+                    .forEach(runtimeAssetFiles::add);
+        } catch (IOException e) {
+            error("Failed to list runtime page templates for jar rewrite test", e);
+            return JarRebuildResult.failure(
+                    "Failed to read generated thumbnail card templates.",
+                    describeFailure(e),
+                    "Check the Tebex plugin data directory permissions and try /tebex rebuild again."
+            );
         }
 
-        Path tempJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.tmp");
-        Path backupJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.bak");
+        if (runtimeAssetFiles.isEmpty()) {
+            return JarRebuildResult.failure(
+                    "No cached store thumbnail assets were found.",
+                    "The runtime cache did not contain any generated PNG or thumbnail card template files to inject.",
+                    "Open /buy first so package images are cached, then run /tebex rebuild again."
+            );
+        }
+
+        Path tempJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.tmp");
+        Path backupJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.bak");
 
         try {
             Files.deleteIfExists(tempJarPath);
@@ -746,13 +870,10 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 copyZipEntry(input, output, entry);
             }
 
-            for (Path thumbnailFile : thumbnailFiles) {
-                String fileName = thumbnailFile.getFileName().toString();
-                byte[] bytes = Files.readAllBytes(thumbnailFile);
-                writeZipEntry(output, "Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/" + fileName, bytes);
-                writeZipEntry(output, "UI/Custom/Pages/Assets/TebexStoreThumbnails/" + fileName, bytes);
-                writeZipEntry(output, "Common/TebexStoreThumbnails/" + fileName, bytes);
-                writeZipEntry(output, "TebexStoreThumbnails/" + fileName, bytes);
+            for (Path runtimeAssetFile : runtimeAssetFiles) {
+                String entryName = runtimeAssetPackRoot().relativize(runtimeAssetFile).toString().replace('\\', '/');
+                byte[] bytes = Files.readAllBytes(runtimeAssetFile);
+                writeZipEntry(output, entryName, bytes);
             }
         } catch (Exception e) {
             try {
@@ -761,7 +882,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 // No-op
             }
             error("Failed to build rewritten jar candidate at " + tempJarPath.toAbsolutePath(), e);
-            return new JarRewriteTestResult(false, "Failed while rebuilding jar contents: " + e.getMessage());
+            return JarRebuildResult.failure(
+                    "Failed while rebuilding jar contents.",
+                    describeFailure(e),
+                    "Check the server logs for the stack trace, then retry /tebex rebuild."
+            );
         }
 
         try {
@@ -773,7 +898,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 // No-op
             }
             error("Failed to create backup jar before rewrite test at " + backupJarPath.toAbsolutePath(), e);
-            return new JarRewriteTestResult(false, "Failed to create backup jar before rewrite: " + e.getMessage());
+            return JarRebuildResult.failure(
+                    "Failed to create a backup of the current Tebex jar.",
+                    describeFailure(e),
+                    "Ensure the mods directory is writable and remove any stale *.rebuild.bak file, then retry /tebex rebuild."
+            );
         }
 
         try {
@@ -783,7 +912,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 Files.move(tempJarPath, jarPath, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (Exception e) {
-            Path stagedJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rewrite.ready.jar");
+            Path stagedJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.ready");
             try {
                 Files.move(tempJarPath, stagedJarPath, StandardCopyOption.REPLACE_EXISTING);
             } catch (Exception stageException) {
@@ -794,34 +923,50 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 }
                 error("Failed to stage rewritten plugin jar at " + stagedJarPath.toAbsolutePath(), stageException);
                 error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
-                return new JarRewriteTestResult(
-                        false,
-                        "Jar replacement failed (likely file lock) and staging also failed. Backup at: " + backupJarPath.toAbsolutePath()
+                return JarRebuildResult.failure(
+                        "The running Tebex jar could not be replaced or staged.",
+                        "Replacement failure: " + describeFailure(e) + " | Staging failure: " + describeFailure(stageException),
+                        "Stop the server, remove stale *.rebuild.ready files if present, and retry /tebex rebuild."
                 );
             }
 
             error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
             warnNoLog(
-                    "Running plugin jar is locked; staged patched jar for next restart.",
+                    "Running plugin jar is locked; staged rebuilt jar for next restart.",
                     "Disable current jar and promote staged jar after shutdown: current=" + jarPath.getFileName()
                             + ", staged=" + stagedJarPath.getFileName()
             );
-            return new JarRewriteTestResult(
-                    true,
-                    "Jar is locked while running. Staged patched jar: " + stagedJarPath.toAbsolutePath()
-                            + ". After stopping the server, rename current jar to .disabled and rename staged jar to " + jarPath.getFileName() + "."
+            return JarRebuildResult.staged(
+                    "The running Tebex jar is locked, so the rebuilt jar was staged instead.",
+                    "Staged file: " + stagedJarPath.toAbsolutePath(),
+                    "After stopping the server, rename the current jar to .disabled and rename " + stagedJarPath.getFileName()
+                            + " to " + jarPath.getFileName() + "."
             );
         }
 
-        info("Jar rewrite test succeeded. Updated " + thumbnailFiles.size() + " runtime thumbnail(s) in " + jarPath.toAbsolutePath());
+        info("Jar rebuild succeeded. Updated " + runtimeAssetFiles.size() + " runtime asset(s) in " + jarPath.toAbsolutePath());
         warnNoLog(
-                "Plugin jar was rewritten successfully for test purposes.",
+                "Plugin jar was rebuilt successfully with cached Tebex assets.",
                 "A full server restart is required before the updated jar resources can be used."
         );
-        return new JarRewriteTestResult(
-                true,
-                "Jar rewrite succeeded. Restart the server to test resources from inside the rewritten jar."
+        return JarRebuildResult.success(
+                "Tebex jar rebuild succeeded.",
+                "Injected " + runtimeAssetFiles.size() + " cached runtime asset(s) into " + jarPath.getFileName() + ".",
+                "Restart the server so the rebuilt jar can be loaded."
         );
+    }
+
+    @Nonnull
+    private static String describeFailure(@Nullable Throwable throwable) {
+        if (throwable == null) {
+            return "Unknown error";
+        }
+
+        String message = throwable.getMessage();
+        if (message == null || message.isBlank()) {
+            return throwable.getClass().getSimpleName();
+        }
+        return throwable.getClass().getSimpleName() + ": " + message;
     }
 
     @Nullable
@@ -843,10 +988,50 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     private static boolean isRuntimeThumbnailJarEntry(@Nonnull String entryName) {
-        return entryName.startsWith("Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/")
+        return isGeneratedRuntimeThumbnailEntry(entryName)
+                || isGeneratedRuntimeCardTemplateEntry(entryName)
+                || entryName.startsWith("Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/")
                 || entryName.startsWith("UI/Custom/Pages/Assets/TebexStoreThumbnails/")
                 || entryName.startsWith("Common/TebexStoreThumbnails/")
                 || entryName.startsWith("TebexStoreThumbnails/");
+    }
+
+    private static boolean isGeneratedRuntimeThumbnailEntry(@Nonnull String entryName) {
+        String normalized = entryName.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        String fileName = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
+        if (!isGeneratedRuntimeThumbnailFileName(fileName)) {
+            return false;
+        }
+
+        return normalized.startsWith(RUNTIME_THUMBNAIL_JAR_DIRECTORY + "/")
+                || normalized.startsWith("UI/Custom/Pages/Assets/");
+    }
+
+    private static boolean isGeneratedRuntimeThumbnailFileName(@Nonnull String fileName) {
+        String normalized = fileName.trim();
+        return normalized.equals(RUNTIME_THUMBNAIL_PLACEHOLDER)
+                || normalized.equals(runtimeThumbnail2xFileName(RUNTIME_THUMBNAIL_PLACEHOLDER))
+                || normalized.matches("\\d+(?:@2x)?\\.png");
+    }
+
+    private static boolean isGeneratedRuntimeCardTemplateEntry(@Nonnull String entryName) {
+        String normalized = entryName.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        String fileName = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
+        if (!isGeneratedRuntimeCardTemplateFileName(fileName)) {
+            return false;
+        }
+
+        return normalized.startsWith(RUNTIME_PAGE_DIRECTORY + "/")
+                || normalized.startsWith("UI/Custom/Pages/");
+    }
+
+    private static boolean isGeneratedRuntimeCardTemplateFileName(@Nonnull String fileName) {
+        String normalized = fileName.trim();
+        return normalized.endsWith(".ui")
+                && (normalized.startsWith(RUNTIME_CARD_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_CARD_WIDE_TEMPLATE_PREFIX));
     }
 
     private static void copyZipEntry(
@@ -1532,22 +1717,75 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return VERSION;
     }
 
-    public static final class JarRewriteTestResult {
+    public static final class JarRebuildResult {
         private final boolean success;
-        @Nonnull private final String message;
+        private final boolean staged;
+        @Nonnull private final String summary;
+        @Nullable private final String detail;
+        @Nullable private final String nextStep;
 
-        public JarRewriteTestResult(boolean success, @Nonnull String message) {
+        private JarRebuildResult(
+                boolean success,
+                boolean staged,
+                @Nonnull String summary,
+                @Nullable String detail,
+                @Nullable String nextStep
+        ) {
             this.success = success;
-            this.message = message;
+            this.staged = staged;
+            this.summary = summary;
+            this.detail = detail;
+            this.nextStep = nextStep;
+        }
+
+        @Nonnull
+        public static JarRebuildResult success(
+                @Nonnull String summary,
+                @Nullable String detail,
+                @Nullable String nextStep
+        ) {
+            return new JarRebuildResult(true, false, summary, detail, nextStep);
+        }
+
+        @Nonnull
+        public static JarRebuildResult staged(
+                @Nonnull String summary,
+                @Nullable String detail,
+                @Nullable String nextStep
+        ) {
+            return new JarRebuildResult(true, true, summary, detail, nextStep);
+        }
+
+        @Nonnull
+        public static JarRebuildResult failure(
+                @Nonnull String summary,
+                @Nullable String detail,
+                @Nullable String nextStep
+        ) {
+            return new JarRebuildResult(false, false, summary, detail, nextStep);
         }
 
         public boolean success() {
             return success;
         }
 
+        public boolean staged() {
+            return staged;
+        }
+
         @Nonnull
-        public String message() {
-            return message;
+        public String summary() {
+            return summary;
+        }
+
+        @Nullable
+        public String detail() {
+            return detail;
+        }
+
+        @Nullable
+        public String nextStep() {
+            return nextStep;
         }
     }
 

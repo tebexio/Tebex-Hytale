@@ -141,6 +141,7 @@ public final class BuyGui {
         private static final String DETAIL_CARD_SLOT = "#DetailCardSlot";
         private static final String DETAIL_PRIMARY_SLOT = "#DetailPrimaryButtonSlot";
         private static final String DETAIL_SECONDARY_SLOT = "#DetailSecondaryButtonSlot";
+        private static final String CARD_ROW_TEMPLATE = "Pages/TebexStoreCardRow.ui";
         private static final String CARD_TEMPLATE = "Pages/TebexStoreCard.ui";
         private static final String CARD_TEMPLATE_WIDE = "Pages/TebexStoreCardWide.ui";
         private static final String DETAIL_CARD_TEMPLATE = "Pages/TebexDetailCard.ui";
@@ -149,11 +150,9 @@ public final class BuyGui {
         private static final String SUBTITLE_TEMPLATE = "Pages/TebexSubtitleLine.ui";
         private static final String PRIMARY_BUTTON_TEMPLATE = "Pages/TebexPrimaryButton.ui";
         private static final String SECONDARY_BUTTON_TEMPLATE = "Pages/TebexSecondaryButton.ui";
-        private static final String CARD_ROW_INLINE = "Group { LayoutMode: Left; Anchor: (Bottom: 0); }";
-        private static final String UI_THUMBNAIL_PREFIX = "UI/Custom/Pages/Assets/TebexStoreThumbnails/";
-        private static final String COMMON_UI_THUMBNAIL_PREFIX = "Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/";
-        private static final String COMMON_THUMBNAIL_PREFIX = "Common/TebexStoreThumbnails/";
-        private static final String ROOT_THUMBNAIL_PREFIX = "TebexStoreThumbnails/";
+        private static final String PAGE_THUMBNAIL_PREFIX = "Assets/";
+        private static final String UI_THUMBNAIL_PREFIX = "UI/Custom/Pages/Assets/";
+        private static final String COMMON_UI_THUMBNAIL_PREFIX = "Common/UI/Custom/Pages/Assets/";
 
         private static final int CARDS_PER_ROW = 2;
         private static final int PAGE_SIZE = 6;
@@ -361,23 +360,15 @@ public final class BuyGui {
         ) {
             boolean singleColumn = cards.size() <= 1;
             int cardsPerRow = singleColumn ? 1 : CARDS_PER_ROW;
-            String cardTemplate = singleColumn ? CARD_TEMPLATE_WIDE : CARD_TEMPLATE;
             for (int i = 0; i < cards.size(); i++) {
                 int rowIndex = i / cardsPerRow;
                 int colIndex = i % cardsPerRow;
                 if (colIndex == 0) {
-                    commands.appendInline(GRID_ROOT, CARD_ROW_INLINE);
+                    commands.append(GRID_ROOT, CARD_ROW_TEMPLATE);
                 }
 
                 CardEntry card = cards.get(i);
-                if (card.thumbnailTexturePath != null && !card.thumbnailTexturePath.isBlank()) {
-                    commands.appendInline(
-                            gridRowSelector(rowIndex),
-                            buildCardInlineWithThumbnail(singleColumn, card.thumbnailTexturePath)
-                    );
-                } else {
-                    commands.append(gridRowSelector(rowIndex), cardTemplate);
-                }
+                commands.append(gridRowSelector(rowIndex), resolveCardTemplate(singleColumn, card.thumbnailTexturePath));
                 commands.set(cardNameSelector(rowIndex, colIndex), uiText(card.title, "Item"));
                 commands.set(cardUsageSelector(rowIndex, colIndex), uiText(card.usage, ""));
                 commands.set(cardDescriptionSelector(rowIndex, colIndex), uiText(card.description, ""));
@@ -1094,6 +1085,10 @@ public final class BuyGui {
                 return "Icon reference: " + sanitizeUiText(itemRef) + ".";
             }
             if (image != null && !image.isBlank()) {
+                String normalized = normalizeTexturePath(image);
+                if (normalized != null && normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
+                    return "Bundled package thumbnail is available.";
+                }
                 return "Uploaded image URL is available for this package.";
             }
             return "";
@@ -1112,6 +1107,33 @@ public final class BuyGui {
             if (isRenderableUiTexturePath(canonical)) {
                 return toUiTexturePath(canonical);
             }
+
+            String assumedPath = resolveAssumedPackageThumbnailTexture(pack.getId());
+            if (assumedPath != null) {
+                return assumedPath;
+            }
+            return null;
+        }
+
+        @Nonnull
+        private static String resolveCardTemplate(boolean singleColumn, @Nullable String texturePath) {
+            String generatedTemplate = resolveGeneratedCardTemplate(singleColumn, texturePath);
+            if (generatedTemplate != null) {
+                return generatedTemplate;
+            }
+            return singleColumn ? CARD_TEMPLATE_WIDE : CARD_TEMPLATE;
+        }
+
+        @Nullable
+        private static String resolveGeneratedCardTemplate(boolean singleColumn, @Nullable String texturePath) {
+            if (!isRenderableUiTexturePath(texturePath)) {
+                return null;
+            }
+
+            String templatePath = TebexPlugin.runtimeThumbnailCardTemplateUiPath(texturePath, singleColumn);
+            if (hasUiPageAsset(templatePath)) {
+                return templatePath;
+            }
             return null;
         }
 
@@ -1125,30 +1147,17 @@ public final class BuyGui {
             }
 
             LinkedHashSet<String> candidates = new LinkedHashSet<>();
-            if (normalized.startsWith(COMMON_UI_THUMBNAIL_PREFIX)) {
+            if (normalized.startsWith(PAGE_THUMBNAIL_PREFIX)) {
+                String name = normalized.substring(PAGE_THUMBNAIL_PREFIX.length());
+                candidates.add(UI_THUMBNAIL_PREFIX + name);
+                candidates.add(COMMON_UI_THUMBNAIL_PREFIX + name);
+            } else if (normalized.startsWith(COMMON_UI_THUMBNAIL_PREFIX)) {
                 String name = normalized.substring(COMMON_UI_THUMBNAIL_PREFIX.length());
                 candidates.add(UI_THUMBNAIL_PREFIX + name);
                 candidates.add(normalized);
-                candidates.add(ROOT_THUMBNAIL_PREFIX + name);
-                candidates.add(COMMON_THUMBNAIL_PREFIX + name);
             } else if (normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
-                String name = normalized.substring(UI_THUMBNAIL_PREFIX.length());
                 candidates.add(normalized);
-                candidates.add(COMMON_UI_THUMBNAIL_PREFIX + name);
-                candidates.add(ROOT_THUMBNAIL_PREFIX + name);
-                candidates.add(COMMON_THUMBNAIL_PREFIX + name);
-            } else if (normalized.startsWith(COMMON_THUMBNAIL_PREFIX)) {
-                String name = normalized.substring(COMMON_THUMBNAIL_PREFIX.length());
-                candidates.add(UI_THUMBNAIL_PREFIX + name);
-                candidates.add(COMMON_UI_THUMBNAIL_PREFIX + name);
-                candidates.add(ROOT_THUMBNAIL_PREFIX + name);
-                candidates.add(normalized);
-            } else if (normalized.startsWith(ROOT_THUMBNAIL_PREFIX)) {
-                String name = normalized.substring(ROOT_THUMBNAIL_PREFIX.length());
-                candidates.add(UI_THUMBNAIL_PREFIX + name);
-                candidates.add(COMMON_UI_THUMBNAIL_PREFIX + name);
-                candidates.add(normalized);
-                candidates.add(COMMON_THUMBNAIL_PREFIX + name);
+                candidates.add(COMMON_UI_THUMBNAIL_PREFIX + normalized.substring(UI_THUMBNAIL_PREFIX.length()));
             } else {
                 candidates.add(normalized);
                 if (normalized.startsWith("Common/")) {
@@ -1184,14 +1193,11 @@ public final class BuyGui {
             if (normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
                 return normalized;
             }
+            if (normalized.startsWith(PAGE_THUMBNAIL_PREFIX)) {
+                return UI_THUMBNAIL_PREFIX + normalized.substring(PAGE_THUMBNAIL_PREFIX.length());
+            }
             if (normalized.startsWith(COMMON_UI_THUMBNAIL_PREFIX)) {
                 return UI_THUMBNAIL_PREFIX + normalized.substring(COMMON_UI_THUMBNAIL_PREFIX.length());
-            }
-            if (normalized.startsWith(COMMON_THUMBNAIL_PREFIX)) {
-                return UI_THUMBNAIL_PREFIX + normalized.substring(COMMON_THUMBNAIL_PREFIX.length());
-            }
-            if (normalized.startsWith(ROOT_THUMBNAIL_PREFIX)) {
-                return UI_THUMBNAIL_PREFIX + normalized.substring(ROOT_THUMBNAIL_PREFIX.length());
             }
             if (normalized.startsWith("Tebex/StoreThumbnails/")) {
                 return UI_THUMBNAIL_PREFIX + normalized.substring("Tebex/StoreThumbnails/".length());
@@ -1204,10 +1210,10 @@ public final class BuyGui {
                     && !value.isBlank()
                     && !value.startsWith("http://")
                     && !value.startsWith("https://")
-                    && (value.startsWith("Common/")
+                    && (value.startsWith("Assets/")
+                    || value.startsWith("Common/")
                     || value.startsWith("Tebex/")
-                    || value.startsWith("UI/")
-                    || value.startsWith("TebexStoreThumbnails/"));
+                    || value.startsWith("UI/"));
         }
 
         @Nullable
@@ -1217,75 +1223,56 @@ public final class BuyGui {
             }
 
             String normalized = canonicalPath.replace('\\', '/');
-            if (normalized.startsWith(COMMON_UI_THUMBNAIL_PREFIX)) {
-                return UI_THUMBNAIL_PREFIX + normalized.substring(COMMON_UI_THUMBNAIL_PREFIX.length());
-            }
-            if (normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
+            if (normalized.startsWith(PAGE_THUMBNAIL_PREFIX)) {
                 return normalized;
             }
-            if (normalized.startsWith(COMMON_THUMBNAIL_PREFIX)) {
-                return UI_THUMBNAIL_PREFIX + normalized.substring(COMMON_THUMBNAIL_PREFIX.length());
+            if (normalized.startsWith(COMMON_UI_THUMBNAIL_PREFIX)) {
+                return PAGE_THUMBNAIL_PREFIX + normalized.substring(COMMON_UI_THUMBNAIL_PREFIX.length());
             }
-            if (normalized.startsWith(ROOT_THUMBNAIL_PREFIX)) {
-                return UI_THUMBNAIL_PREFIX + normalized.substring(ROOT_THUMBNAIL_PREFIX.length());
+            if (normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
+                return PAGE_THUMBNAIL_PREFIX + normalized.substring(UI_THUMBNAIL_PREFIX.length());
             }
             return normalized;
         }
 
-        @Nonnull
-        private static String buildCardInlineWithThumbnail(boolean singleColumn, @Nonnull String texturePath) {
-            String escapedTexturePath = escapeUiString(texturePath);
-            String anchor = singleColumn
-                    ? "(Width: 840, Height: 146, Bottom: 12)"
-                    : "(Width: 414, Height: 146, Bottom: 12, Right: 12)";
+        @Nullable
+        private static String resolveAssumedPackageThumbnailTexture(int packageId) {
+            String fileName = packageId + ".png";
+            String canonical = resolveExistingTexturePath(UI_THUMBNAIL_PREFIX + fileName);
+            if (isRenderableUiTexturePath(canonical)) {
+                return toUiTexturePath(canonical);
+            }
+            return null;
+        }
 
-            return "Button #Card {\n"
-                    + "  Anchor: " + anchor + ";\n"
-                    + "  Padding: (Full: 10);\n"
-                    + "  LayoutMode: Left;\n"
-                    + "  Background: #0f1b2d(0.88);\n"
-                    + "  Style: (\n"
-                    + "    Hovered: (Background: #16253a(0.95)),\n"
-                    + "    Pressed: (Background: #1c2f4a(0.95))\n"
-                    + "  );\n"
-                    + "\n"
-                    + "  Sprite #PackageThumbnail {\n"
-                    + "    Anchor: (Width: 96, Height: 96, Right: 10);\n"
-                    + "    Background: (TexturePath: \"" + escapedTexturePath + "\");\n"
-                    + "  }\n"
-                    + "\n"
-                    + "  Group {\n"
-                    + "    LayoutMode: Top;\n"
-                    + "    FlexWeight: 1;\n"
-                    + "\n"
-                    + "    Label #SubcommandName {\n"
-                    + "      Style: (\n"
-                    + "        FontSize: 18,\n"
-                    + "        RenderBold: true,\n"
-                    + "        TextColor: #ffffff,\n"
-                    + "        RenderUppercase: true\n"
-                    + "      );\n"
-                    + "      Anchor: (Bottom: 4);\n"
-                    + "    }\n"
-                    + "\n"
-                    + "    Label #SubcommandUsage {\n"
-                    + "      Style: (\n"
-                    + "        FontSize: 13,\n"
-                    + "        TextColor: #96a9be,\n"
-                    + "        RenderBold: true\n"
-                    + "      );\n"
-                    + "      Anchor: (Bottom: 4);\n"
-                    + "    }\n"
-                    + "\n"
-                    + "    Label #SubcommandDescription {\n"
-                    + "      Style: (\n"
-                    + "        FontSize: 12,\n"
-                    + "        TextColor: #8fa0b8,\n"
-                    + "        Wrap: true\n"
-                    + "      );\n"
-                    + "    }\n"
-                    + "  }\n"
-                    + "}\n";
+        private static boolean hasUiPageAsset(@Nullable String pagePath) {
+            if (pagePath == null || pagePath.isBlank()) {
+                return false;
+            }
+
+            String normalized = pagePath.trim().replace('\\', '/');
+            LinkedHashSet<String> candidates = new LinkedHashSet<>();
+            if (normalized.startsWith("Pages/")) {
+                String relative = normalized.substring("Pages/".length());
+                candidates.add("UI/Custom/Pages/" + relative);
+                candidates.add("Common/UI/Custom/Pages/" + relative);
+            } else if (normalized.startsWith("UI/Custom/Pages/")) {
+                candidates.add(normalized);
+                candidates.add("Common/" + normalized);
+            } else if (normalized.startsWith("Common/UI/Custom/Pages/")) {
+                candidates.add(normalized);
+                candidates.add(normalized.substring("Common/".length()));
+            } else {
+                candidates.add("UI/Custom/Pages/" + normalized);
+                candidates.add("Common/UI/Custom/Pages/" + normalized);
+            }
+
+            for (String candidate : candidates) {
+                if (CommonAssetRegistry.hasCommonAsset(candidate)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Nonnull
@@ -1405,13 +1392,6 @@ public final class BuyGui {
             }
 
             return cleaned.toString().replaceAll("\\s+", " ").trim();
-        }
-
-        @Nonnull
-        private static String escapeUiString(@Nonnull String raw) {
-            return raw
-                    .replace("\\", "\\\\")
-                    .replace("\"", "\\\"");
         }
 
         private static int parseId(@Nullable String value) {
