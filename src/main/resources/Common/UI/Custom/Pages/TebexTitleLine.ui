@@ -3,10 +3,9 @@ $C = "../Common.ui";
 Label #Line {
   Style: (
     ...$C.@TitleStyle,
-    FontSize: 38,
+    FontSize: 40,
     TextColor: $C.@ColorGoldHighlight,
     HorizontalAlignment: Start,
-    RenderUppercase: true,
     RenderBold: true
   );
   MaskTexturePath: $C.@TextHighlightGradientMask;

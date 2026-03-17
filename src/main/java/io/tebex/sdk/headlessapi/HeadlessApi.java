@@ -136,11 +136,11 @@ public class HeadlessApi {
         }
 
         AddBasketPackageRequest payload = new AddBasketPackageRequest(Integer.toString(packageId), quantity);
-        Basket response = PluginApi.GSON.fromJson(
+        BasketResponse response = PluginApi.GSON.fromJson(
                 request(Verb.POST, "baskets/" + ident + "/packages", payload),
-                Basket.class
+                BasketResponse.class
         );
-        return response == null ? new Basket() : response;
+        return response == null || response.getData() == null ? new Basket() : response.getData();
     }
 
     @Nonnull
@@ -154,11 +154,11 @@ public class HeadlessApi {
         }
 
         RemoveBasketPackageRequest payload = new RemoveBasketPackageRequest(Integer.toString(packageId));
-        Basket response = PluginApi.GSON.fromJson(
+        BasketResponse response = PluginApi.GSON.fromJson(
                 request(Verb.POST, "baskets/" + ident + "/packages/remove", payload),
-                Basket.class
+                BasketResponse.class
         );
-        return response == null ? new Basket() : response;
+        return response == null || response.getData() == null ? new Basket() : response.getData();
     }
 
     @Nonnull
