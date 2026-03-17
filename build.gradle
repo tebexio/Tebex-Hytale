@@ -42,6 +42,9 @@ def generatedJavaDir = layout.buildDirectory.dir("filtered-src")
 tasks.register('filterJavaVersion', Copy) {
     from 'src/main/java'
     into generatedJavaDir
+    doFirst {
+        delete generatedJavaDir.get().asFile
+    }
 
     // Replace the {VERSION} token in all Java files
     filter { String line ->

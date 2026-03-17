@@ -12,6 +12,6 @@ public class TebexCommand extends AbstractCommandCollection {
         this.addSubCommand(new TebexSendLinkCommand());
         this.addSubCommand(new TebexDebugCommand());
         this.addSubCommand(new TebexGoalsCommand());
-        this.addSubCommand(new TebexRewriteJarCommand());
+        this.addSubCommand(new TebexRebuildCommand());
     }
 }

@@ -9,10 +9,10 @@ import io.tebex.hytale.plugin.TebexPlugin;
 
 import javax.annotation.Nonnull;
 
-public class TebexRewriteJarCommand extends CommandBase {
+public class TebexRebuildCommand extends CommandBase {
     private final TebexPlugin plugin = TebexPlugin.get();
 
-    public TebexRewriteJarCommand() {
+    public TebexRebuildCommand() {
         super("rebuild", "commands.tebex.rebuild");
     }
 
@@ -20,7 +20,7 @@ public class TebexRewriteJarCommand extends CommandBase {
     protected void executeSync(@Nonnull CommandContext ctx) {
         CommandUtil.requirePermission(ctx.sender(), HytalePermissions.fromCommand("tebex.debug"));
 
-        TebexPlugin.JarRebuildResult result = plugin.rebuildOwnJar();
+        TebexPlugin.AssetPackRebuildResult result = plugin.rebuildThumbnailAssetPack();
         ctx.sendMessage(Message.raw(result.summary()));
         if (result.detail() != null && !result.detail().isBlank()) {
             ctx.sendMessage(Message.raw("Reason: " + result.detail()));
@@ -30,16 +30,12 @@ public class TebexRewriteJarCommand extends CommandBase {
         }
 
         if (result.success()) {
-            if (result.staged()) {
-                plugin.warn("[JarRebuild] " + result.summary(), result.nextStep() == null ? "" : result.nextStep());
-            } else {
-                plugin.info("[JarRebuild] " + result.summary());
-            }
+            plugin.info("[ThumbnailAssetPack] " + result.summary());
         } else {
             plugin.warn(
-                    "[JarRebuild] " + result.summary(),
+                    "[ThumbnailAssetPack] " + result.summary(),
                     (result.detail() == null || result.detail().isBlank())
-                            ? "See server logs above for detailed rebuild failure output."
+                            ? "See server logs above for detailed thumbnail asset-pack rebuild output."
                             : result.detail()
             );
         }

@@ -55,10 +55,10 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -71,16 +71,16 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     public static final String VERSION = "{{VERSION}}";
     private static final String THUMBNAIL_CACHE_DIRECTORY = "thumbnail-cache";
+    private static final String THUMBNAIL_ASSET_PACK_DIRECTORY_NAME = "Tebex_Tebex-Hytale-Thumbnails";
+    private static final String THUMBNAIL_ASSET_PACK_MANIFEST = "manifest.json";
+    private static final String THUMBNAIL_ASSET_PACK_GROUP = "Tebex";
+    private static final String THUMBNAIL_ASSET_PACK_NAME = "Tebex-Hytale-Thumbnails";
     private static final String RUNTIME_PAGE_DIRECTORY = "Common/UI/Custom/Pages";
     private static final String RUNTIME_THUMBNAIL_DIRECTORY = "Common/UI/Custom/Pages/Assets";
-    private static final String RUNTIME_THUMBNAIL_JAR_DIRECTORY = "Common/UI/Custom/Pages/Assets";
     private static final String RUNTIME_THUMBNAIL_TEXTURE_PREFIX = "Assets";
     private static final String RUNTIME_CARD_TEMPLATE_PREFIX = "TebexGeneratedStoreCard_";
     private static final String RUNTIME_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedStoreCardWide_";
@@ -90,6 +90,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             THUMBNAIL_CACHE_DIRECTORY + "/Common/TebexStoreThumbnails",
             THUMBNAIL_CACHE_DIRECTORY + "/Common/UI/Custom/Pages/Assets/TebexStoreThumbnails",
             THUMBNAIL_CACHE_DIRECTORY + "/UI"
+    );
+    private static final List<String> LEGACY_EXTERNAL_ASSET_PACK_DIRECTORIES = List.of(
+            "Common/UI/Custom/Pages/Assets/TebexStoreThumbnails",
+            "UI/Custom/Pages/Assets/TebexStoreThumbnails",
+            "Common/TebexStoreThumbnails",
+            "TebexStoreThumbnails"
     );
     private static final String RUNTIME_THUMBNAIL_PLACEHOLDER = "_placeholder.png";
     private static final int RUNTIME_THUMBNAIL_SIZE = 96;
@@ -115,6 +121,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private boolean warnedMissingHeadlessToken = false;
     private boolean warnedHeadlessAccountMismatch = false;
     private boolean loggedInformationPayload = false;
+    private boolean loggedThumbnailAssetPackLocation = false;
     private String configuredHeadlessPrivateKey = "";
     private final ConcurrentHashMap<Integer, String> packageThumbnailSources = new ConcurrentHashMap<>();
     private final HttpClient thumbnailHttpClient = HttpClient.newBuilder()
@@ -445,13 +452,77 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
     private synchronized void ensureRuntimeThumbnailWorkspace() throws IOException {
         cleanupLegacyRuntimeThumbnailDirectory();
+        cleanupLegacyExternalAssetPackDirectories();
+        boolean assetPackCreated = Files.notExists(runtimeAssetPackRoot());
+        Files.createDirectories(runtimeAssetPackRoot());
+        ensureRuntimeThumbnailAssetPackManifest();
         Files.createDirectories(runtimeThumbnailDirectory());
+        Files.createDirectories(runtimePageDirectory());
         ensurePlaceholderThumbnailExists();
+        if (!loggedThumbnailAssetPackLocation) {
+            loggedThumbnailAssetPackLocation = true;
+            info("Publishing Tebex thumbnail assets to external asset pack at " + runtimeAssetPackRoot().toAbsolutePath());
+        }
+        if (assetPackCreated) {
+            warnNoLog(
+                    "Created Tebex thumbnail asset pack at " + runtimeAssetPackRoot().toAbsolutePath(),
+                    "Restart the server once so Hytale registers the new asset pack from the mods folder. After that, thumbnail file updates should use the same asset-pack path."
+            );
+        }
     }
 
     @Nonnull
     private Path runtimeAssetPackRoot() {
-        return getDataDirectory().resolve(THUMBNAIL_CACHE_DIRECTORY);
+        return resolveModsDirectory().resolve(THUMBNAIL_ASSET_PACK_DIRECTORY_NAME);
+    }
+
+    @Nonnull
+    private Path resolveModsDirectory() {
+        Path dataDirectory = getDataDirectory();
+        Path parent = dataDirectory.getParent();
+        if (parent != null) {
+            return parent;
+        }
+
+        Path jarPath = resolveOwnJarPath();
+        if (jarPath != null && jarPath.getParent() != null) {
+            return jarPath.getParent();
+        }
+
+        return dataDirectory;
+    }
+
+    private void ensureRuntimeThumbnailAssetPackManifest() throws IOException {
+        Path manifestPath = runtimeAssetPackRoot().resolve(THUMBNAIL_ASSET_PACK_MANIFEST);
+        String manifestContents = buildRuntimeThumbnailAssetPackManifest();
+        String existing = Files.isRegularFile(manifestPath)
+                ? Files.readString(manifestPath, StandardCharsets.UTF_8)
+                : null;
+        if (manifestContents.equals(existing)) {
+            return;
+        }
+
+        Files.writeString(
+                manifestPath,
+                manifestContents,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
+    }
+
+    @Nonnull
+    private static String buildRuntimeThumbnailAssetPackManifest() {
+        return "{\n"
+                + "  \"Group\": \"" + THUMBNAIL_ASSET_PACK_GROUP + "\",\n"
+                + "  \"Name\": \"" + THUMBNAIL_ASSET_PACK_NAME + "\",\n"
+                + "  \"Version\": \"" + VERSION + "\",\n"
+                + "  \"Website\": \"https://tebex.io/\",\n"
+                + "  \"Description\": \"Runtime-generated Tebex store thumbnails and UI card templates.\",\n"
+                + "  \"IncludesAssetPack\": false,\n"
+                + "  \"ServerVersion\": \"*\"\n"
+                + "}\n";
     }
 
     @Nonnull
@@ -542,6 +613,29 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         "Legacy thumbnail aliases may continue to show until files are cleaned. Path: " + legacyDirectory.toAbsolutePath()
                 );
                 error("Failed to cleanup legacy runtime thumbnail directory " + legacyDirectory.toAbsolutePath(), e);
+            }
+        }
+    }
+
+    private void cleanupLegacyExternalAssetPackDirectories() {
+        for (String legacyDirectoryPath : LEGACY_EXTERNAL_ASSET_PACK_DIRECTORIES) {
+            Path legacyDirectory = runtimeAssetRelativePath(legacyDirectoryPath);
+            if (!Files.exists(legacyDirectory)) {
+                continue;
+            }
+
+            try (Stream<Path> stream = Files.walk(legacyDirectory)) {
+                List<Path> paths = stream.sorted(Comparator.reverseOrder()).toList();
+                for (Path path : paths) {
+                    Files.deleteIfExists(path);
+                }
+                info("Removed legacy Tebex thumbnail asset-pack directory at " + legacyDirectory.toAbsolutePath());
+            } catch (IOException e) {
+                warnNoLog(
+                        "Failed to remove legacy Tebex thumbnail asset-pack directory.",
+                        "Legacy asset-pack paths may continue to override current thumbnails. Path: " + legacyDirectory.toAbsolutePath()
+                );
+                error("Failed to cleanup legacy thumbnail asset-pack directory " + legacyDirectory.toAbsolutePath(), e);
             }
         }
     }
@@ -788,24 +882,20 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
-    public synchronized JarRebuildResult rebuildOwnJar() {
-        Path jarPath = resolveOwnJarPath();
-        if (jarPath == null) {
-            return JarRebuildResult.failure(
-                    "Plugin is not running from a .jar file.",
-                    "The current plugin code source is a directory, so Tebex cannot rebuild an on-disk jar from this environment.",
-                    "Build the plugin and run the packaged .jar before using /tebex rebuild."
-            );
+    public synchronized AssetPackRebuildResult rebuildThumbnailAssetPack() {
+        AssetPackRebuildResult refreshFailure = refreshStoreDataForThumbnailRebuild();
+        if (refreshFailure != null) {
+            return refreshFailure;
         }
 
         try {
             ensureRuntimeThumbnailWorkspace();
         } catch (Exception e) {
-            error("Failed to initialize runtime thumbnail workspace before jar rewrite test", e);
-            return JarRebuildResult.failure(
-                    "Failed to prepare the runtime thumbnail workspace.",
+            error("Failed to initialize runtime thumbnail workspace before external asset-pack rebuild", e);
+            return AssetPackRebuildResult.failure(
+                    "Failed to prepare the Tebex thumbnail asset pack.",
                     describeFailure(e),
-                    "Check the Tebex plugin data directory permissions and try /tebex rebuild again."
+                    "Check that the server mods directory is writable, then run /tebex rebuild again."
             );
         }
 
@@ -817,8 +907,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     .sorted()
                     .forEach(runtimeAssetFiles::add);
         } catch (IOException e) {
-            error("Failed to list runtime thumbnails for jar rewrite test", e);
-            return JarRebuildResult.failure(
+            error("Failed to list runtime thumbnails for external asset pack rebuild", e);
+            return AssetPackRebuildResult.failure(
                     "Failed to read cached package thumbnails.",
                     describeFailure(e),
                     "Open the store at least once so the server can cache package images, then run /tebex rebuild again."
@@ -832,128 +922,59 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     .sorted()
                     .forEach(runtimeAssetFiles::add);
         } catch (IOException e) {
-            error("Failed to list runtime page templates for jar rewrite test", e);
-            return JarRebuildResult.failure(
+            error("Failed to list runtime page templates for external asset pack rebuild", e);
+            return AssetPackRebuildResult.failure(
                     "Failed to read generated thumbnail card templates.",
                     describeFailure(e),
-                    "Check the Tebex plugin data directory permissions and try /tebex rebuild again."
+                    "Check that the server mods directory is writable, then run /tebex rebuild again."
             );
         }
 
         if (runtimeAssetFiles.isEmpty()) {
-            return JarRebuildResult.failure(
+            return AssetPackRebuildResult.failure(
                     "No cached store thumbnail assets were found.",
-                    "The runtime cache did not contain any generated PNG or thumbnail card template files to inject.",
+                    "The external Tebex thumbnail asset pack does not contain any generated PNG or thumbnail card template files yet.",
                     "Open /buy first so package images are cached, then run /tebex rebuild again."
             );
         }
 
-        Path tempJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.tmp");
-        Path backupJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.bak");
-
-        try {
-            Files.deleteIfExists(tempJarPath);
-        } catch (IOException ignored) {
-            // Best-effort cleanup before we start.
-        }
-
-        try (
-                ZipInputStream input = new ZipInputStream(Files.newInputStream(jarPath));
-                ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(tempJarPath))
-        ) {
-            ZipEntry entry;
-            while ((entry = input.getNextEntry()) != null) {
-                String entryName = entry.getName().replace('\\', '/');
-                if (isRuntimeThumbnailJarEntry(entryName)) {
-                    continue;
-                }
-                copyZipEntry(input, output, entry);
-            }
-
-            for (Path runtimeAssetFile : runtimeAssetFiles) {
-                String entryName = runtimeAssetPackRoot().relativize(runtimeAssetFile).toString().replace('\\', '/');
-                byte[] bytes = Files.readAllBytes(runtimeAssetFile);
-                writeZipEntry(output, entryName, bytes);
-            }
-        } catch (Exception e) {
-            try {
-                Files.deleteIfExists(tempJarPath);
-            } catch (IOException ignored) {
-                // No-op
-            }
-            error("Failed to build rewritten jar candidate at " + tempJarPath.toAbsolutePath(), e);
-            return JarRebuildResult.failure(
-                    "Failed while rebuilding jar contents.",
-                    describeFailure(e),
-                    "Check the server logs for the stack trace, then retry /tebex rebuild."
-            );
-        }
-
-        try {
-            Files.copy(jarPath, backupJarPath, StandardCopyOption.REPLACE_EXISTING);
-        } catch (Exception e) {
-            try {
-                Files.deleteIfExists(tempJarPath);
-            } catch (IOException ignored) {
-                // No-op
-            }
-            error("Failed to create backup jar before rewrite test at " + backupJarPath.toAbsolutePath(), e);
-            return JarRebuildResult.failure(
-                    "Failed to create a backup of the current Tebex jar.",
-                    describeFailure(e),
-                    "Ensure the mods directory is writable and remove any stale *.rebuild.bak file, then retry /tebex rebuild."
-            );
-        }
-
-        try {
-            try {
-                Files.move(tempJarPath, jarPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(tempJarPath, jarPath, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (Exception e) {
-            Path stagedJarPath = jarPath.resolveSibling(jarPath.getFileName() + ".rebuild.ready");
-            try {
-                Files.move(tempJarPath, stagedJarPath, StandardCopyOption.REPLACE_EXISTING);
-            } catch (Exception stageException) {
-                try {
-                    Files.deleteIfExists(tempJarPath);
-                } catch (IOException ignored) {
-                    // No-op
-                }
-                error("Failed to stage rewritten plugin jar at " + stagedJarPath.toAbsolutePath(), stageException);
-                error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
-                return JarRebuildResult.failure(
-                        "The running Tebex jar could not be replaced or staged.",
-                        "Replacement failure: " + describeFailure(e) + " | Staging failure: " + describeFailure(stageException),
-                        "Stop the server, remove stale *.rebuild.ready files if present, and retry /tebex rebuild."
-                );
-            }
-
-            error("Failed to replace running plugin jar at " + jarPath.toAbsolutePath(), e);
-            warnNoLog(
-                    "Running plugin jar is locked; staged rebuilt jar for next restart.",
-                    "Disable current jar and promote staged jar after shutdown: current=" + jarPath.getFileName()
-                            + ", staged=" + stagedJarPath.getFileName()
-            );
-            return JarRebuildResult.staged(
-                    "The running Tebex jar is locked, so the rebuilt jar was staged instead.",
-                    "Staged file: " + stagedJarPath.toAbsolutePath(),
-                    "After stopping the server, rename the current jar to .disabled and rename " + stagedJarPath.getFileName()
-                            + " to " + jarPath.getFileName() + "."
-            );
-        }
-
-        info("Jar rebuild succeeded. Updated " + runtimeAssetFiles.size() + " runtime asset(s) in " + jarPath.toAbsolutePath());
-        warnNoLog(
-                "Plugin jar was rebuilt successfully with cached Tebex assets.",
-                "A full server restart is required before the updated jar resources can be used."
+        info("Thumbnail asset pack rebuild succeeded. Published " + runtimeAssetFiles.size() + " runtime asset(s) to " + runtimeAssetPackRoot().toAbsolutePath());
+        return AssetPackRebuildResult.success(
+                "Tebex thumbnail asset pack is ready.",
+                "Refreshed store data and published " + runtimeAssetFiles.size() + " runtime asset(s) to " + runtimeAssetPackRoot().toAbsolutePath() + ".",
+                "If this asset pack was created for the first time on this server, restart once so Hytale registers it from the mods folder."
         );
-        return JarRebuildResult.success(
-                "Tebex jar rebuild succeeded.",
-                "Injected " + runtimeAssetFiles.size() + " cached runtime asset(s) into " + jarPath.getFileName() + ".",
-                "Restart the server so the rebuilt jar can be loaded."
-        );
+    }
+
+    @Nullable
+    private AssetPackRebuildResult refreshStoreDataForThumbnailRebuild() {
+        refreshServerInfo(true);
+
+        if (tebexServerInfo == null) {
+            return AssetPackRebuildResult.failure(
+                    "Failed to refresh Plugin API /information before rebuilding thumbnails.",
+                    "The plugin could not refresh its Tebex server information, so the rebuild cannot determine which store assets to download.",
+                    "Check your Tebex secret key and the server logs, then run /tebex rebuild again."
+            );
+        }
+
+        if (!headlessApi.hasPublicToken()) {
+            return AssetPackRebuildResult.failure(
+                    "Cannot rebuild thumbnails because the Headless public token is missing.",
+                    "Plugin API /information did not provide account.public_token, so Tebex cannot re-download uploaded package images.",
+                    "Fix the Tebex store linkage so /information returns account.public_token, then run /tebex rebuild again."
+            );
+        }
+
+        if (headlessWebstore == null) {
+            return AssetPackRebuildResult.failure(
+                    "Cannot rebuild thumbnails because the Headless store refresh failed.",
+                    "The plugin fell back to Plugin API store data, which does not include uploaded package images for thumbnail re-downloads.",
+                    "Check the Headless API warnings in the server log, then run /tebex rebuild again."
+            );
+        }
+
+        return null;
     }
 
     @Nonnull
@@ -987,27 +1008,6 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 
-    private static boolean isRuntimeThumbnailJarEntry(@Nonnull String entryName) {
-        return isGeneratedRuntimeThumbnailEntry(entryName)
-                || isGeneratedRuntimeCardTemplateEntry(entryName)
-                || entryName.startsWith("Common/UI/Custom/Pages/Assets/TebexStoreThumbnails/")
-                || entryName.startsWith("UI/Custom/Pages/Assets/TebexStoreThumbnails/")
-                || entryName.startsWith("Common/TebexStoreThumbnails/")
-                || entryName.startsWith("TebexStoreThumbnails/");
-    }
-
-    private static boolean isGeneratedRuntimeThumbnailEntry(@Nonnull String entryName) {
-        String normalized = entryName.replace('\\', '/');
-        int lastSlash = normalized.lastIndexOf('/');
-        String fileName = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
-        if (!isGeneratedRuntimeThumbnailFileName(fileName)) {
-            return false;
-        }
-
-        return normalized.startsWith(RUNTIME_THUMBNAIL_JAR_DIRECTORY + "/")
-                || normalized.startsWith("UI/Custom/Pages/Assets/");
-    }
-
     private static boolean isGeneratedRuntimeThumbnailFileName(@Nonnull String fileName) {
         String normalized = fileName.trim();
         return normalized.equals(RUNTIME_THUMBNAIL_PLACEHOLDER)
@@ -1015,57 +1015,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 || normalized.matches("\\d+(?:@2x)?\\.png");
     }
 
-    private static boolean isGeneratedRuntimeCardTemplateEntry(@Nonnull String entryName) {
-        String normalized = entryName.replace('\\', '/');
-        int lastSlash = normalized.lastIndexOf('/');
-        String fileName = lastSlash >= 0 ? normalized.substring(lastSlash + 1) : normalized;
-        if (!isGeneratedRuntimeCardTemplateFileName(fileName)) {
-            return false;
-        }
-
-        return normalized.startsWith(RUNTIME_PAGE_DIRECTORY + "/")
-                || normalized.startsWith("UI/Custom/Pages/");
-    }
-
     private static boolean isGeneratedRuntimeCardTemplateFileName(@Nonnull String fileName) {
         String normalized = fileName.trim();
         return normalized.endsWith(".ui")
                 && (normalized.startsWith(RUNTIME_CARD_TEMPLATE_PREFIX)
                 || normalized.startsWith(RUNTIME_CARD_WIDE_TEMPLATE_PREFIX));
-    }
-
-    private static void copyZipEntry(
-            @Nonnull ZipInputStream input,
-            @Nonnull ZipOutputStream output,
-            @Nonnull ZipEntry source
-    ) throws IOException {
-        ZipEntry target = new ZipEntry(source.getName());
-        if (source.getTime() > 0) {
-            target.setTime(source.getTime());
-        }
-        if (source.getComment() != null) {
-            target.setComment(source.getComment());
-        }
-        output.putNextEntry(target);
-
-        byte[] buffer = new byte[8192];
-        int read;
-        while ((read = input.read(buffer)) != -1) {
-            output.write(buffer, 0, read);
-        }
-        output.closeEntry();
-    }
-
-    private static void writeZipEntry(
-            @Nonnull ZipOutputStream output,
-            @Nonnull String entryName,
-            @Nonnull byte[] bytes
-    ) throws IOException {
-        ZipEntry entry = new ZipEntry(entryName);
-        entry.setTime(System.currentTimeMillis());
-        output.putNextEntry(entry);
-        output.write(bytes);
-        output.closeEntry();
     }
 
     @Nonnull
@@ -1717,60 +1671,44 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return VERSION;
     }
 
-    public static final class JarRebuildResult {
+    public static final class AssetPackRebuildResult {
         private final boolean success;
-        private final boolean staged;
         @Nonnull private final String summary;
         @Nullable private final String detail;
         @Nullable private final String nextStep;
 
-        private JarRebuildResult(
+        private AssetPackRebuildResult(
                 boolean success,
-                boolean staged,
                 @Nonnull String summary,
                 @Nullable String detail,
                 @Nullable String nextStep
         ) {
             this.success = success;
-            this.staged = staged;
             this.summary = summary;
             this.detail = detail;
             this.nextStep = nextStep;
         }
 
         @Nonnull
-        public static JarRebuildResult success(
+        public static AssetPackRebuildResult success(
                 @Nonnull String summary,
                 @Nullable String detail,
                 @Nullable String nextStep
         ) {
-            return new JarRebuildResult(true, false, summary, detail, nextStep);
+            return new AssetPackRebuildResult(true, summary, detail, nextStep);
         }
 
         @Nonnull
-        public static JarRebuildResult staged(
+        public static AssetPackRebuildResult failure(
                 @Nonnull String summary,
                 @Nullable String detail,
                 @Nullable String nextStep
         ) {
-            return new JarRebuildResult(true, true, summary, detail, nextStep);
-        }
-
-        @Nonnull
-        public static JarRebuildResult failure(
-                @Nonnull String summary,
-                @Nullable String detail,
-                @Nullable String nextStep
-        ) {
-            return new JarRebuildResult(false, false, summary, detail, nextStep);
+            return new AssetPackRebuildResult(false, summary, detail, nextStep);
         }
 
         public boolean success() {
             return success;
-        }
-
-        public boolean staged() {
-            return staged;
         }
 
         @Nonnull
