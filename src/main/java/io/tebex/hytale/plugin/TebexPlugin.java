@@ -60,6 +60,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -117,6 +118,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Getter private final ConcurrentHashMap<Integer, Category> categoriesCache = new ConcurrentHashMap<>();
     @Getter private final ConcurrentHashMap<Integer, Package> packagesCache = new ConcurrentHashMap<>();
     @Getter private CopyOnWriteArrayList<CommunityGoal> communityGoalsCache = new CopyOnWriteArrayList<>();
+    @Getter private CopyOnWriteArrayList<StoreSaleInfo> storeSalesCache = new CopyOnWriteArrayList<>();
+    @Getter private final ConcurrentHashMap<Integer, String> categoryThumbnailTextureCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, String> completedCommands = new ConcurrentHashMap<>();
     private boolean warnedMissingHeadlessToken = false;
     private boolean warnedHeadlessAccountMismatch = false;
@@ -124,6 +127,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private boolean loggedThumbnailAssetPackLocation = false;
     private String configuredHeadlessPrivateKey = "";
     private final ConcurrentHashMap<Integer, String> packageThumbnailSources = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, String> categoryThumbnailSources = new ConcurrentHashMap<>();
     private final HttpClient thumbnailHttpClient = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
@@ -391,8 +395,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             remoteCategories.forEach(c -> categoriesCache.put(c.getId(), c));
 
             communityGoalsCache = new CopyOnWriteArrayList<>(pluginApi.getCommunityGoals());
+            storeSalesCache = loadStoreSalesFromPluginApi();
             headlessWebstore = null;
-            debug("Store data source=Plugin API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size());
+            debug("Store data source=Plugin API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size() + ", Sales=" + storeSalesCache.size());
         } catch (Exception e) {
             error("Failed to refresh fallback Plugin API store data: " + e.getMessage(), e);
             clearStoreCaches();
@@ -408,19 +413,28 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         Webstore webstore = headlessApi.getWebstore();
         List<HeadlessPackage> headlessPackages = headlessApi.getPackages();
         List<HeadlessCategory> headlessCategories = headlessApi.getCategoriesIncludingPackages();
+        List<Category> pluginListingCategories = loadPluginListingCategories();
+        Map<Integer, CategoryPackage> pluginListingMetadata = buildPluginListingPackageMetadata(pluginListingCategories);
+        Map<Integer, Category> pluginCategoryMetadata = buildPluginListingCategoryMetadata(pluginListingCategories);
         Map<Integer, String> thumbnailTexturePaths = cacheHeadlessPackageThumbnails(headlessPackages, allowThumbnailDownload);
+        Map<Integer, String> categoryThumbnailTexturePaths = cacheHeadlessCategoryThumbnails(headlessCategories, allowThumbnailDownload);
+        CopyOnWriteArrayList<StoreSaleInfo> newSales = loadStoreSalesFromPluginApi();
 
         ConcurrentHashMap<Integer, Package> newPackages = new ConcurrentHashMap<>();
         for (HeadlessPackage headlessPackage : headlessPackages) {
             String thumbnailTexturePath = thumbnailTexturePaths.get(headlessPackage.getId());
-            Package pluginPackage = toPluginPackage(headlessPackage, thumbnailTexturePath);
+            Package pluginPackage = toPluginPackage(
+                    headlessPackage,
+                    thumbnailTexturePath,
+                    pluginListingMetadata.get(headlessPackage.getId())
+            );
             newPackages.put(pluginPackage.getId(), pluginPackage);
         }
 
         headlessCategories.sort(Comparator.comparingInt(HeadlessCategory::getOrder).thenComparingInt(HeadlessCategory::getId));
         ConcurrentHashMap<Integer, Category> newCategories = new ConcurrentHashMap<>();
         for (HeadlessCategory headlessCategory : headlessCategories) {
-            Category pluginCategory = toPluginCategory(headlessCategory, thumbnailTexturePaths);
+            Category pluginCategory = toPluginCategory(headlessCategory, thumbnailTexturePaths, pluginListingMetadata, pluginCategoryMetadata);
             newCategories.put(pluginCategory.getId(), pluginCategory);
         }
 
@@ -445,9 +459,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         packagesCache.putAll(newPackages);
         categoriesCache.clear();
         categoriesCache.putAll(newCategories);
+        categoryThumbnailTextureCache.clear();
+        categoryThumbnailTextureCache.putAll(categoryThumbnailTexturePaths);
         communityGoalsCache = newGoals;
+        storeSalesCache = newSales;
         headlessWebstore = webstore;
-        debug("Store data source=Headless API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size());
+        debug("Store data source=Headless API, Packages=" + packagesCache.size() + ", Categories=" + categoriesCache.size() + ", Community Goals=" + communityGoalsCache.size() + ", Sales=" + storeSalesCache.size());
     }
 
     private synchronized void ensureRuntimeThumbnailWorkspace() throws IOException {
@@ -789,6 +806,120 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         packageThumbnailSources.put(packageId, trimmedSource);
     }
 
+    @Nonnull
+    private Map<Integer, String> cacheHeadlessCategoryThumbnails(
+            @Nonnull List<HeadlessCategory> headlessCategories,
+            boolean allowDownload
+    ) {
+        ConcurrentHashMap<Integer, String> texturePaths = new ConcurrentHashMap<>();
+        Set<Integer> currentCategoryIds = new HashSet<>();
+
+        try {
+            ensureRuntimeThumbnailWorkspace();
+        } catch (Exception e) {
+            error("Failed to initialize runtime thumbnail workspace", e);
+            return texturePaths;
+        }
+
+        boolean skippedRuntimeDownloadLogged = false;
+        for (HeadlessCategory headlessCategory : headlessCategories) {
+            int categoryId = headlessCategory.getId();
+            currentCategoryIds.add(categoryId);
+
+            String sourceImageUrl = sanitizeImageValue(headlessCategory.getImageUrl());
+            if (sourceImageUrl == null || sourceImageUrl.isBlank()) {
+                categoryThumbnailSources.remove(categoryId);
+                continue;
+            }
+
+            String fileName = categoryThumbnailFileName(categoryId);
+            String fileName2x = runtimeThumbnail2xFileName(fileName);
+            Path thumbnailPath = runtimeThumbnailPath(fileName);
+            Path thumbnailPath2x = runtimeThumbnailPath(fileName2x);
+            if (allowDownload) {
+                try {
+                    cacheCategoryThumbnail(categoryId, sourceImageUrl);
+                    texturePaths.put(categoryId, runtimeThumbnailTexturePath(fileName));
+                    continue;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    debug("Thumbnail download interrupted for category " + categoryId + ": " + e.getMessage());
+                    break;
+                } catch (Exception e) {
+                    debug("Failed to cache thumbnail for category " + categoryId + ": " + e.getMessage());
+                }
+            } else if (!skippedRuntimeDownloadLogged) {
+                skippedRuntimeDownloadLogged = true;
+                debug("Skipping runtime thumbnail downloads during scheduled refresh; restart server to recache category images.");
+            }
+
+            if (Files.isRegularFile(thumbnailPath)) {
+                try {
+                    ensureThumbnail2xVariant(thumbnailPath, thumbnailPath2x);
+                    ensureThumbnailCardTemplates(fileName);
+                    texturePaths.put(categoryId, runtimeThumbnailTexturePath(fileName));
+                } catch (Exception e) {
+                    debug("Failed to publish cached thumbnail alias for category " + categoryId + ": " + e.getMessage());
+                }
+            }
+        }
+
+        categoryThumbnailSources.keySet().removeIf(categoryId -> !currentCategoryIds.contains(categoryId));
+        return texturePaths;
+    }
+
+    private void cacheCategoryThumbnail(int categoryId, @Nonnull String sourceImageUrl) throws IOException, InterruptedException {
+        String fileName = categoryThumbnailFileName(categoryId);
+        String fileName2x = runtimeThumbnail2xFileName(fileName);
+        Path outputPath = runtimeThumbnailPath(fileName);
+        Path outputPath2x = runtimeThumbnailPath(fileName2x);
+        String trimmedSource = sourceImageUrl.trim();
+        String cachedSource = categoryThumbnailSources.get(categoryId);
+        if (trimmedSource.equals(cachedSource) && Files.isRegularFile(outputPath) && Files.isRegularFile(outputPath2x)) {
+            ensureThumbnailCardTemplates(fileName);
+            return;
+        }
+
+        HttpRequest request = HttpRequest.newBuilder(URI.create(trimmedSource))
+                .timeout(Duration.ofSeconds(10))
+                .header("Accept", "image/*")
+                .header("User-Agent", getHttpProvider().getUserAgent())
+                .GET()
+                .build();
+
+        HttpResponse<byte[]> response = thumbnailHttpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IOException("Thumbnail request failed with status " + response.statusCode() + " for category " + categoryId);
+        }
+
+        BufferedImage sourceImage = ImageIO.read(new ByteArrayInputStream(response.body()));
+        if (sourceImage == null) {
+            throw new IOException("Unsupported image format for category " + categoryId);
+        }
+
+        BufferedImage thumbnail = normalizeThumbnailImage(sourceImage, RUNTIME_THUMBNAIL_SIZE, RUNTIME_THUMBNAIL_SIZE);
+        BufferedImage thumbnail2x = normalizeThumbnailImage(sourceImage, RUNTIME_THUMBNAIL_SIZE_2X, RUNTIME_THUMBNAIL_SIZE_2X);
+        Path parent = outputPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+
+        if (!ImageIO.write(thumbnail, "png", outputPath.toFile())) {
+            throw new IOException("No PNG writer available while caching category thumbnail " + categoryId);
+        }
+        if (!ImageIO.write(thumbnail2x, "png", outputPath2x.toFile())) {
+            throw new IOException("No PNG writer available while caching category thumbnail @2x " + categoryId);
+        }
+
+        ensureThumbnailCardTemplates(fileName);
+        categoryThumbnailSources.put(categoryId, trimmedSource);
+    }
+
+    @Nonnull
+    private static String categoryThumbnailFileName(int categoryId) {
+        return "category-" + categoryId + ".png";
+    }
+
     private void ensureThumbnail2xVariant(@Nonnull Path sourcePath, @Nonnull Path sourcePath2x) throws IOException {
         if (!Files.isRegularFile(sourcePath) || Files.isRegularFile(sourcePath2x)) {
             return;
@@ -1047,9 +1178,251 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return output;
     }
 
+    @Nonnull
+    private List<Category> loadPluginListingCategories() {
+        try {
+            return pluginApi.getCategories();
+        } catch (Exception e) {
+            debug("Failed to load Plugin API listing metadata for Headless supplementation: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    @Nonnull
+    private Map<Integer, CategoryPackage> buildPluginListingPackageMetadata(@Nonnull List<Category> listingCategories) {
+        ConcurrentHashMap<Integer, CategoryPackage> metadata = new ConcurrentHashMap<>();
+        for (Category category : listingCategories) {
+            if (category == null || category.getPackages() == null) {
+                continue;
+            }
+            for (CategoryPackage pack : category.getPackages()) {
+                if (pack != null) {
+                    metadata.put(pack.getId(), pack);
+                }
+            }
+        }
+        return metadata;
+    }
+
+    @Nonnull
+    private Map<Integer, Category> buildPluginListingCategoryMetadata(@Nonnull List<Category> listingCategories) {
+        ConcurrentHashMap<Integer, Category> metadata = new ConcurrentHashMap<>();
+        for (Category category : listingCategories) {
+            if (category != null) {
+                metadata.put(category.getId(), category);
+            }
+        }
+        return metadata;
+    }
+
+    @Nonnull
+    private CopyOnWriteArrayList<StoreSaleInfo> loadStoreSalesFromPluginApi() {
+        try {
+            List<com.google.gson.JsonObject> rawSales = pluginApi.getSales();
+            return new CopyOnWriteArrayList<>(toStoreSales(rawSales == null ? List.of() : rawSales));
+        } catch (Exception e) {
+            debug("Failed to load Tebex sales metadata: " + e.getMessage());
+            return new CopyOnWriteArrayList<>();
+        }
+    }
+
+    @Nonnull
+    private List<StoreSaleInfo> toStoreSales(@Nullable List<com.google.gson.JsonObject> salesPayload) {
+        List<StoreSaleInfo> sales = new ArrayList<>();
+        if (salesPayload == null) {
+            return sales;
+        }
+
+        for (com.google.gson.JsonObject sale : salesPayload) {
+            if (sale == null) {
+                continue;
+            }
+
+            int id = (int) Math.round(getFirstJsonDouble(sale, 0d, "id"));
+            String name = getFirstJsonString(sale, "Sale", "name", "sale_name", "title", "header");
+            String scope = getFirstJsonString(sale, "", "scope", "sale_scope", "type");
+
+            com.google.gson.JsonObject discount = getJsonObject(sale, "discount");
+            String discountType = discount == null
+                    ? getFirstJsonString(sale, "", "discount_type", "type")
+                    : getFirstJsonString(discount, "", "type", "discount_type");
+            double percentage = discount == null
+                    ? getFirstJsonDouble(sale, 0d, "percentage", "percent")
+                    : getFirstJsonDouble(discount, 0d, "percentage", "percent");
+            double amount = discount == null
+                    ? getFirstJsonDouble(sale, 0d, "amount", "value", "discount")
+                    : getFirstJsonDouble(discount, 0d, "amount", "value", "discount");
+
+            com.google.gson.JsonObject effective = getJsonObject(sale, "effective");
+            String eligibility = getFirstJsonString(
+                    effective == null ? sale : effective,
+                    "",
+                    "customer_eligibility",
+                    "eligibility",
+                    "requirements",
+                    "customer_requirements"
+            );
+            String startAt = getFirstJsonString(
+                    sale,
+                    getFirstJsonString(effective, "", "start", "starts_at", "start_at", "start_time"),
+                    "start",
+                    "starts_at",
+                    "start_at",
+                    "start_time"
+            );
+            String endAt = getFirstJsonString(
+                    sale,
+                    getFirstJsonString(effective, "", "end", "expire", "expires_at", "expire_at", "end_time"),
+                    "end",
+                    "expire",
+                    "expires_at",
+                    "expire_at",
+                    "end_time"
+            );
+
+            double minimumBasket = getFirstJsonDouble(
+                    effective == null ? sale : effective,
+                    Double.NaN,
+                    "minimum_basket",
+                    "minimum_basket_value",
+                    "basket_minimum",
+                    "basket_requirement"
+            );
+            boolean active = resolveStoreSaleActive(sale, startAt, endAt);
+
+            sales.add(new StoreSaleInfo(
+                    id,
+                    name,
+                    formatStoreSaleDiscount(discountType, percentage, amount),
+                    scope,
+                    sanitizeSaleField(eligibility),
+                    formatStoreSaleWindow(startAt, endAt),
+                    Double.isNaN(minimumBasket) || minimumBasket <= 0d
+                            ? ""
+                            : formatCurrency(minimumBasket) + " minimum basket",
+                    active
+            ));
+        }
+
+        sales.sort(Comparator
+                .comparing(StoreSaleInfo::active).reversed()
+                .thenComparing(StoreSaleInfo::name, String.CASE_INSENSITIVE_ORDER));
+        return sales;
+    }
+
+    private boolean resolveStoreSaleActive(
+            @Nonnull com.google.gson.JsonObject sale,
+            @Nullable String startAt,
+            @Nullable String endAt
+    ) {
+        Boolean explicitActive = getFirstJsonBoolean(sale, "active", "enabled");
+        Boolean disabled = getFirstJsonBoolean(sale, "disabled");
+        if (disabled != null && disabled) {
+            return false;
+        }
+        if (explicitActive != null) {
+            return explicitActive;
+        }
+
+        Instant now = Instant.now();
+        Instant start = parseIsoInstant(startAt);
+        Instant end = parseIsoInstant(endAt);
+        if (start != null && now.isBefore(start)) {
+            return false;
+        }
+        if (end != null && now.isAfter(end)) {
+            return false;
+        }
+        return true;
+    }
+
+    @Nonnull
+    private String formatStoreSaleDiscount(@Nullable String discountType, double percentage, double amount) {
+        String normalizedType = discountType == null ? "" : discountType.trim().toLowerCase(Locale.ROOT);
+        if ("percentage".equals(normalizedType) || percentage > 0d) {
+            double value = percentage > 0d ? percentage : amount;
+            return trimTrailingZeros(value) + "% off";
+        }
+        if ("amount".equals(normalizedType) || amount > 0d) {
+            return formatCurrency(amount) + " off";
+        }
+        return "Sale active";
+    }
+
+    @Nonnull
+    private static String formatStoreSaleWindow(@Nullable String startAt, @Nullable String endAt) {
+        String start = formatIsoInstant(startAt);
+        String end = formatIsoInstant(endAt);
+        if (!start.isBlank() && !end.isBlank()) {
+            return "Active " + start + " to " + end;
+        }
+        if (!start.isBlank()) {
+            return "Starts " + start;
+        }
+        if (!end.isBlank()) {
+            return "Ends " + end;
+        }
+        return "";
+    }
+
+    @Nonnull
+    private String formatCurrency(double amount) {
+        String symbol = tebexServerInfo != null
+                && tebexServerInfo.getAccount() != null
+                && tebexServerInfo.getAccount().getCurrency() != null
+                ? safeText(tebexServerInfo.getAccount().getCurrency().getSymbol())
+                : "";
+        if (symbol.isBlank()) {
+            symbol = "$";
+        }
+        return symbol + String.format(Locale.US, "%.2f", amount);
+    }
+
+    @Nonnull
+    private static String sanitizeSaleField(@Nullable String value) {
+        return value == null ? "" : value.replaceAll("\\s+", " ").trim();
+    }
+
+    @Nullable
+    private static Instant parseIsoInstant(@Nullable String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (Exception ignored) {
+        }
+        try {
+            return java.time.OffsetDateTime.parse(value).toInstant();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    @Nonnull
+    private static String formatIsoInstant(@Nullable String value) {
+        Instant instant = parseIsoInstant(value);
+        if (instant == null) {
+            return "";
+        }
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                .withZone(java.time.ZoneOffset.UTC)
+                .format(instant);
+    }
+
+    @Nonnull
+    private static String trimTrailingZeros(double value) {
+        if (Math.rint(value) == value) {
+            return Integer.toString((int) Math.round(value));
+        }
+        return String.format(Locale.US, "%.2f", value).replaceAll("0+$", "").replaceAll("\\.$", "");
+    }
+
     private static Category toPluginCategory(
             @Nonnull HeadlessCategory headlessCategory,
-            @Nonnull Map<Integer, String> thumbnailTexturePaths
+            @Nonnull Map<Integer, String> thumbnailTexturePaths,
+            @Nonnull Map<Integer, CategoryPackage> pluginListingMetadata,
+            @Nonnull Map<Integer, Category> pluginCategoryMetadata
     ) {
         List<CategoryPackage> pluginPackages = new ArrayList<>();
         List<HeadlessPackage> headlessPackages = headlessCategory.getPackages();
@@ -1060,17 +1433,20 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         toPluginCategoryPackage(
                                 headlessPackage,
                                 i,
-                                thumbnailTexturePaths.get(headlessPackage.getId())
+                                thumbnailTexturePaths.get(headlessPackage.getId()),
+                                pluginListingMetadata.get(headlessPackage.getId())
                         )
                 );
             }
         }
 
+        Category pluginListingCategory = pluginCategoryMetadata.get(headlessCategory.getId());
+
         return new Category(
                 headlessCategory.getId(),
                 headlessCategory.getOrder(),
                 safeText(headlessCategory.getName()),
-                null,
+                pluginListingCategory == null ? null : pluginListingCategory.getGuiItem(),
                 false,
                 pluginPackages
         );
@@ -1079,9 +1455,13 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private static CategoryPackage toPluginCategoryPackage(
             @Nonnull HeadlessPackage headlessPackage,
             int order,
-            @Nullable String thumbnailTexturePath
+            @Nullable String thumbnailTexturePath,
+            @Nullable CategoryPackage pluginListingMetadata
     ) {
         double discount = headlessPackage.getDiscount();
+        if ((discount <= 0d) && pluginListingMetadata != null && pluginListingMetadata.getSale() != null) {
+            discount = pluginListingMetadata.getSale().getDiscount();
+        }
         CategoryPackage.Sale sale = new CategoryPackage.Sale(discount > 0, discount);
         return new CategoryPackage(
                 headlessPackage.getId(),
@@ -1089,15 +1469,16 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 safeText(headlessPackage.getName()),
                 resolvePrice(headlessPackage),
                 safeText(headlessPackage.getDescription()),
-                chooseImage(thumbnailTexturePath, resolveImage(headlessPackage)),
-                null,
+                chooseImage(thumbnailTexturePath, chooseImage(resolveImage(headlessPackage), pluginListingMetadata == null ? null : pluginListingMetadata.getImage())),
+                pluginListingMetadata == null ? null : pluginListingMetadata.getItemId(),
                 sale
         );
     }
 
     private static Package toPluginPackage(
             @Nonnull HeadlessPackage headlessPackage,
-            @Nullable String thumbnailTexturePath
+            @Nullable String thumbnailTexturePath,
+            @Nullable CategoryPackage pluginListingMetadata
     ) {
         HeadlessPackage.Category sourceCategory = headlessPackage.getCategory();
         Package.Category pluginCategory = sourceCategory == null
@@ -1110,7 +1491,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 safeText(headlessPackage.getName()),
                 description,
                 description,
-                chooseImage(thumbnailTexturePath, resolveImage(headlessPackage)),
+                chooseImage(thumbnailTexturePath, chooseImage(resolveImage(headlessPackage), pluginListingMetadata == null ? null : pluginListingMetadata.getImage())),
                 resolvePrice(headlessPackage),
                 0,
                 null,
@@ -1125,7 +1506,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 false,
                 false,
                 true,
-                null,
+                pluginListingMetadata == null ? null : pluginListingMetadata.getItemId(),
                 false,
                 headlessPackage.isDisableQuantity(),
                 false,
@@ -1198,11 +1579,97 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
     @Nullable
     private static String chooseImage(@Nullable String preferredImage, @Nullable String fallbackImage) {
-        if (preferredImage != null && !preferredImage.isBlank()) {
-            return preferredImage;
+        String preferred = sanitizeImageValue(preferredImage);
+        String fallback = sanitizeImageValue(fallbackImage);
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred;
         }
-        if (fallbackImage != null && !fallbackImage.isBlank()) {
-            return fallbackImage;
+        if (fallback != null && !fallback.isBlank()) {
+            return fallback;
+        }
+        return null;
+    }
+
+    @Nullable
+    private static String sanitizeImageValue(@Nullable String image) {
+        if (image == null) {
+            return null;
+        }
+        String normalized = image.trim();
+        if (normalized.isBlank()
+                || "false".equalsIgnoreCase(normalized)
+                || "null".equalsIgnoreCase(normalized)) {
+            return null;
+        }
+        return normalized;
+    }
+
+    @Nullable
+    private static com.google.gson.JsonObject getJsonObject(
+            @Nullable com.google.gson.JsonObject jsonObject,
+            @Nonnull String key
+    ) {
+        if (jsonObject == null || !jsonObject.has(key) || jsonObject.get(key).isJsonNull()) {
+            return null;
+        }
+        try {
+            return jsonObject.getAsJsonObject(key);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    @Nonnull
+    private static String getFirstJsonString(
+            @Nullable com.google.gson.JsonObject jsonObject,
+            @Nonnull String fallback,
+            @Nonnull String... keys
+    ) {
+        if (jsonObject == null) {
+            return fallback;
+        }
+        for (String key : keys) {
+            String value = getJsonString(jsonObject, key, "");
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        return fallback;
+    }
+
+    private static double getFirstJsonDouble(
+            @Nullable com.google.gson.JsonObject jsonObject,
+            double fallback,
+            @Nonnull String... keys
+    ) {
+        if (jsonObject == null) {
+            return fallback;
+        }
+        for (String key : keys) {
+            double value = getJsonDouble(jsonObject, key, Double.NaN);
+            if (!Double.isNaN(value)) {
+                return value;
+            }
+        }
+        return fallback;
+    }
+
+    @Nullable
+    private static Boolean getFirstJsonBoolean(
+            @Nullable com.google.gson.JsonObject jsonObject,
+            @Nonnull String... keys
+    ) {
+        if (jsonObject == null) {
+            return null;
+        }
+        for (String key : keys) {
+            if (!jsonObject.has(key) || jsonObject.get(key).isJsonNull()) {
+                continue;
+            }
+            try {
+                return jsonObject.get(key).getAsBoolean();
+            } catch (Exception ignored) {
+            }
         }
         return null;
     }
@@ -1243,7 +1710,10 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         packagesCache.clear();
         categoriesCache.clear();
         communityGoalsCache.clear();
+        storeSalesCache.clear();
+        categoryThumbnailTextureCache.clear();
         packageThumbnailSources.clear();
+        categoryThumbnailSources.clear();
         headlessWebstore = null;
     }
 
@@ -1477,6 +1947,10 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         this.packagesCache.clear();
         this.categoriesCache.clear();
         this.communityGoalsCache.clear();
+        this.storeSalesCache.clear();
+        this.categoryThumbnailTextureCache.clear();
+        this.categoryThumbnailSources.clear();
+        this.packageThumbnailSources.clear();
         this.handlePluginEvents(); // will empty plugin events
         this.handlePlayerEvents(); // will empty player events
     }
@@ -1669,6 +2143,18 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Override
     public String getVersion() {
         return VERSION;
+    }
+
+    public record StoreSaleInfo(
+            int id,
+            @Nonnull String name,
+            @Nonnull String discountText,
+            @Nonnull String scope,
+            @Nonnull String eligibility,
+            @Nonnull String effectiveWindow,
+            @Nonnull String minimumBasket,
+            boolean active
+    ) {
     }
 
     public static final class AssetPackRebuildResult {

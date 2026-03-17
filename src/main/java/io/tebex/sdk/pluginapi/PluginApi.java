@@ -3,6 +3,7 @@ package io.tebex.sdk.pluginapi;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.google.gson.reflect.TypeToken;
 import io.tebex.sdk.common.Verb;
@@ -71,6 +72,10 @@ public class PluginApi {
 
     public List<CommunityGoal> getCommunityGoals() throws IOException, InterruptedException {
         return GSON.fromJson(httpApi(Verb.GET, "community_goals"), new TypeToken<List<CommunityGoal>>() {}.getType());
+    }
+
+    public List<JsonObject> getSales() throws IOException, InterruptedException {
+        return GSON.fromJson(httpApi(Verb.GET, "sales"), Responses.SalesResponse.class).getData();
     }
 
     public CommandQueueResponse getCommandQueue() throws IOException, InterruptedException {
@@ -180,6 +185,11 @@ public class PluginApi {
         public static class CategoriesResponse {
             @SerializedName("categories")
             @Getter public List<Category> categories;
+        }
+
+        public static class SalesResponse {
+            @SerializedName("data")
+            @Getter public List<JsonObject> data;
         }
     }
 }

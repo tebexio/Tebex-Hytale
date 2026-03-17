@@ -39,6 +39,7 @@ public class Package {
     private final boolean createGiftcard;
     @SerializedName("show_util")
     private final boolean showUtil;
+    @SerializedName(value = "gui_item", alternate = {"item_id"})
     private final String itemId;
     private final boolean disabled;
     @SerializedName("disable_quantity")

@@ -144,6 +144,8 @@ public final class BuyGui {
         private static final String CARD_ROW_TEMPLATE = "Pages/TebexStoreCardRow.ui";
         private static final String CARD_TEMPLATE = "Pages/TebexStoreCard.ui";
         private static final String CARD_TEMPLATE_WIDE = "Pages/TebexStoreCardWide.ui";
+        private static final String CARD_ICON_TEMPLATE = "Pages/TebexStoreCardIcon.ui";
+        private static final String CARD_ICON_TEMPLATE_WIDE = "Pages/TebexStoreCardIconWide.ui";
         private static final String DETAIL_CARD_TEMPLATE = "Pages/TebexDetailCard.ui";
         private static final String DETAIL_CARD_CHECKOUT_TEMPLATE = "Pages/TebexDetailCardCheckout.ui";
         private static final String TITLE_TEMPLATE = "Pages/TebexTitleLine.ui";
@@ -238,7 +240,8 @@ public final class BuyGui {
                         category.getName(),
                         packageCount + " package" + (packageCount == 1 ? "" : "s"),
                         "Open category",
-                        null
+                        resolveCategoryThumbnailTexture(category),
+                        resolveCategoryItemId(category)
                 ));
             }
 
@@ -288,15 +291,15 @@ public final class BuyGui {
             int to = Math.min(packages.size(), from + PAGE_SIZE);
             for (int i = from; i < to; i++) {
                 CategoryPackage pack = packages.get(i);
-                String price = String.format(Locale.US, "$%.2f", pack.getPrice());
                 debugPackageDescriptionFields("grid", pack);
                 cards.add(CardEntry.button(
                         ACTION_SELECT_PACKAGE,
                         Integer.toString(pack.getId()),
                         pack.getName(),
-                        price,
+                        buildPackagePriceLine(pack),
                         summarizeDescription(resolvePackageDescription(pack)),
-                        resolveCardThumbnailTexture(pack)
+                        resolveCardThumbnailTexture(pack),
+                        resolvePackageItemId(pack)
                 ));
             }
 
@@ -329,9 +332,10 @@ public final class BuyGui {
                         ACTION_SELECT_CART_ITEM,
                         Integer.toString(entry.pack().getId()),
                         entry.pack().getName(),
-                        "Qty " + entry.quantity() + " | " + String.format(Locale.US, "$%.2f", entry.subtotal()),
+                        buildCartEntryUsage(entry),
                         summarizeDescription(resolvePackageDescription(entry.pack())),
-                        resolveCardThumbnailTexture(entry.pack())
+                        resolveCardThumbnailTexture(entry.pack()),
+                        resolvePackageItemId(entry.pack())
                 ));
             }
 
@@ -368,10 +372,15 @@ public final class BuyGui {
                 }
 
                 CardEntry card = cards.get(i);
-                commands.append(gridRowSelector(rowIndex), resolveCardTemplate(singleColumn, card.thumbnailTexturePath));
+                String template = resolveCardTemplate(singleColumn, card.thumbnailTexturePath, card.itemId);
+                commands.append(gridRowSelector(rowIndex), template);
                 commands.set(cardNameSelector(rowIndex, colIndex), uiText(card.title, "Item"));
                 commands.set(cardUsageSelector(rowIndex, colIndex), uiText(card.usage, ""));
                 commands.set(cardDescriptionSelector(rowIndex, colIndex), uiText(card.description, ""));
+                if (isIconTemplate(template) && card.itemId != null && !card.itemId.isBlank()) {
+                    commands.set(cardItemIdSelector(rowIndex, colIndex), card.itemId);
+                    commands.set(cardItemQuantitySelector(rowIndex, colIndex), 1);
+                }
 
                 if (card.interactive) {
                     events.addEventBinding(
@@ -402,7 +411,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Store Overview",
-                        getVisibleCategories().size() + " categories available",
+                        buildStoreOverviewUsage(),
                         buildStoreOverviewDescription()
                 );
                 if (isCartEnabled() && !cartSession.isEmpty()) {
@@ -428,7 +437,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Store Overview",
-                        getVisibleCategories().size() + " categories available",
+                        buildStoreOverviewUsage(),
                         buildStoreOverviewDescription()
                 );
                 return;
@@ -458,7 +467,7 @@ public final class BuyGui {
             setDetailCard(
                     commands,
                     selectedPack.getName(),
-                    String.format(Locale.US, "$%.2f", selectedPack.getPrice()),
+                    buildPackagePriceLine(selectedPack),
                     buildPackageDetailDescription(selectedPack)
             );
 
@@ -526,7 +535,7 @@ public final class BuyGui {
             setDetailCard(
                     commands,
                     selectedEntry.pack().getName(),
-                    "Qty " + selectedEntry.quantity() + " | " + String.format(Locale.US, "$%.2f", selectedEntry.subtotal()),
+                    buildCartEntryUsage(selectedEntry),
                     buildPackageDetailDescription(selectedEntry.pack())
             );
             appendButton(
@@ -1014,10 +1023,36 @@ public final class BuyGui {
                         pack.getItemId(),
                         null
                 );
+                CategoryPackage cachePack = findPackageInCaches(packageId);
+                if (cachePack != null) {
+                    categoryPack = cachePack;
+                }
                 entries.add(new CartEntry(categoryPack, quantity, pack.getPrice() * quantity));
             }
             entries.sort(Comparator.comparing(value -> value.pack().getName(), String.CASE_INSENSITIVE_ORDER));
             return entries;
+        }
+
+        @Nullable
+        private CategoryPackage findPackageInCaches(int packageId) {
+            if (packageId <= 0) {
+                return null;
+            }
+            for (Category category : getVisibleCategories()) {
+                for (CategoryPackage pack : getCategoryPackages(category)) {
+                    if (pack.getId() == packageId) {
+                        return pack;
+                    }
+                }
+            }
+            return null;
+        }
+
+        @Nonnull
+        private String buildStoreOverviewUsage() {
+            int categoryCount = getVisibleCategories().size();
+            long activeSales = TebexPlugin.get().getStoreSalesCache().stream().filter(TebexPlugin.StoreSaleInfo::active).count();
+            return categoryCount + " categories available | " + activeSales + " active sale" + (activeSales == 1 ? "" : "s");
         }
 
         @Nonnull
@@ -1035,6 +1070,31 @@ public final class BuyGui {
                 builder.append("Cart is disabled, so Buy Now creates a direct checkout URL. ");
             }
             builder.append("HTML descriptions are shown as plain text in this UI.");
+
+            List<TebexPlugin.StoreSaleInfo> sales = plugin.getStoreSalesCache();
+            if (!sales.isEmpty()) {
+                builder.append("\n\nSales:");
+                for (TebexPlugin.StoreSaleInfo sale : sales) {
+                    builder.append("\n- ")
+                            .append(sale.name())
+                            .append(" | ")
+                            .append(sale.discountText().isBlank() ? "Sale active" : sale.discountText())
+                            .append(" | ")
+                            .append(sale.active() ? "Active" : "Inactive");
+                    if (!sale.scope().isBlank()) {
+                        builder.append(" | Scope: ").append(sale.scope());
+                    }
+                    if (!sale.effectiveWindow().isBlank()) {
+                        builder.append(" | ").append(sale.effectiveWindow());
+                    }
+                    if (!sale.minimumBasket().isBlank()) {
+                        builder.append(" | ").append(sale.minimumBasket());
+                    }
+                    if (!sale.eligibility().isBlank()) {
+                        builder.append(" | Eligibility: ").append(sale.eligibility());
+                    }
+                }
+            }
             return builder.toString();
         }
 
@@ -1055,13 +1115,17 @@ public final class BuyGui {
             if (total <= 0d) {
                 total = subtotal;
             }
-            return itemCount + " item" + (itemCount == 1 ? "" : "s") + " | " + String.format(Locale.US, "$%.2f", total);
+            return itemCount + " item" + (itemCount == 1 ? "" : "s") + " | " + formatMoney(total);
         }
 
         @Nonnull
         private static String buildPackageDetailDescription(@Nonnull CategoryPackage pack) {
             String description = resolvePackageDescription(pack);
+            String saleHint = resolveSaleHint(pack);
             String visualHint = resolveVisualHint(pack);
+            if (!saleHint.isBlank()) {
+                description = description + " " + saleHint;
+            }
             if (!visualHint.isBlank()) {
                 return description + " " + visualHint;
             }
@@ -1069,29 +1133,58 @@ public final class BuyGui {
         }
 
         @Nonnull
+        private static String resolveSaleHint(@Nonnull CategoryPackage pack) {
+            double originalPrice = resolveOriginalPrice(pack);
+            if (originalPrice > pack.getPrice()) {
+                return "Sale active: was " + formatMoney(originalPrice) + ", now " + formatMoney(pack.getPrice()) + ".";
+            }
+            return "";
+        }
+
+        @Nonnull
         private static String resolveVisualHint(@Nonnull CategoryPackage pack) {
-            String itemRef = pack.getItemId();
-            String image = pack.getImage();
+            String itemRef = resolvePackageItemId(pack);
+            String image = normalizeTexturePath(pack.getImage());
 
             Package full = TebexPlugin.get().getPackagesCache().get(pack.getId());
-            if ((itemRef == null || itemRef.isBlank()) && full != null) {
-                itemRef = full.getItemId();
-            }
             if ((image == null || image.isBlank()) && full != null) {
-                image = full.getImage();
+                image = normalizeTexturePath(full.getImage());
             }
 
-            if (itemRef != null && !itemRef.isBlank()) {
-                return "Icon reference: " + sanitizeUiText(itemRef) + ".";
-            }
             if (image != null && !image.isBlank()) {
-                String normalized = normalizeTexturePath(image);
-                if (normalized != null && normalized.startsWith(UI_THUMBNAIL_PREFIX)) {
+                if (image.startsWith(UI_THUMBNAIL_PREFIX)) {
                     return "Bundled package thumbnail is available.";
                 }
                 return "Uploaded image URL is available for this package.";
             }
+            if (itemRef != null && !itemRef.isBlank()) {
+                return "Icon reference: " + sanitizeUiText(itemRef) + ".";
+            }
             return "";
+        }
+
+        @Nullable
+        private static String resolvePackageItemId(@Nonnull CategoryPackage pack) {
+            String itemRef = normalizeItemReference(pack.getItemId());
+            if (itemRef != null) {
+                return itemRef;
+            }
+            Package full = TebexPlugin.get().getPackagesCache().get(pack.getId());
+            return normalizeItemReference(full == null ? null : full.getItemId());
+        }
+
+        @Nullable
+        private static String normalizeItemReference(@Nullable String value) {
+            if (value == null) {
+                return null;
+            }
+            String normalized = value.trim();
+            if (normalized.isBlank()
+                    || "false".equalsIgnoreCase(normalized)
+                    || "null".equalsIgnoreCase(normalized)) {
+                return null;
+            }
+            return normalized;
         }
 
         @Nullable
@@ -1115,13 +1208,36 @@ public final class BuyGui {
             return null;
         }
 
+        @Nullable
+        private static String resolveCategoryThumbnailTexture(@Nonnull Category category) {
+            String texturePath = TebexPlugin.get().getCategoryThumbnailTextureCache().get(category.getId());
+            String normalized = normalizeTexturePath(texturePath);
+            String canonical = resolveExistingTexturePath(normalized);
+            if (isRenderableUiTexturePath(canonical)) {
+                return toUiTexturePath(canonical);
+            }
+            return null;
+        }
+
+        @Nullable
+        private static String resolveCategoryItemId(@Nonnull Category category) {
+            return normalizeItemReference(category.getGuiItem());
+        }
+
         @Nonnull
-        private static String resolveCardTemplate(boolean singleColumn, @Nullable String texturePath) {
+        private static String resolveCardTemplate(boolean singleColumn, @Nullable String texturePath, @Nullable String itemId) {
             String generatedTemplate = resolveGeneratedCardTemplate(singleColumn, texturePath);
             if (generatedTemplate != null) {
                 return generatedTemplate;
             }
+            if (normalizeItemReference(itemId) != null) {
+                return singleColumn ? CARD_ICON_TEMPLATE_WIDE : CARD_ICON_TEMPLATE;
+            }
             return singleColumn ? CARD_TEMPLATE_WIDE : CARD_TEMPLATE;
+        }
+
+        private static boolean isIconTemplate(@Nullable String templatePath) {
+            return CARD_ICON_TEMPLATE.equals(templatePath) || CARD_ICON_TEMPLATE_WIDE.equals(templatePath);
         }
 
         @Nullable
@@ -1187,6 +1303,9 @@ public final class BuyGui {
 
             String normalized = value.trim().replace('\\', '/');
             if (normalized.isBlank()) {
+                return null;
+            }
+            if ("false".equalsIgnoreCase(normalized) || "null".equalsIgnoreCase(normalized)) {
                 return null;
             }
 
@@ -1441,6 +1560,14 @@ public final class BuyGui {
             return cardSelector(rowIndex, colIndex) + " #SubcommandDescription.TextSpans";
         }
 
+        private static String cardItemIdSelector(int rowIndex, int colIndex) {
+            return cardSelector(rowIndex, colIndex) + " #ItemIcon.ItemId";
+        }
+
+        private static String cardItemQuantitySelector(int rowIndex, int colIndex) {
+            return cardSelector(rowIndex, colIndex) + " #ItemIcon.Quantity";
+        }
+
         private static String buttonSelector(@Nonnull String slotSelector) {
             return slotSelector + "[0]";
         }
@@ -1475,6 +1602,49 @@ public final class BuyGui {
             return value;
         }
 
+        @Nonnull
+        private static String buildPackagePriceLine(@Nonnull CategoryPackage pack) {
+            double current = Math.max(0d, pack.getPrice());
+            double original = resolveOriginalPrice(pack);
+            if (original > current) {
+                return formatMoney(current) + " | Was " + formatMoney(original);
+            }
+            return formatMoney(current);
+        }
+
+        @Nonnull
+        private static String buildCartEntryUsage(@Nonnull CartEntry entry) {
+            double currentSubtotal = Math.max(0d, entry.subtotal());
+            double originalSubtotal = resolveOriginalPrice(entry.pack()) * entry.quantity();
+            if (originalSubtotal > currentSubtotal) {
+                return "Qty " + entry.quantity() + " | " + formatMoney(currentSubtotal) + " | Was " + formatMoney(originalSubtotal);
+            }
+            return "Qty " + entry.quantity() + " | " + formatMoney(currentSubtotal);
+        }
+
+        private static double resolveOriginalPrice(@Nonnull CategoryPackage pack) {
+            CategoryPackage.Sale sale = pack.getSale();
+            if (sale == null || !sale.isActive() || sale.getDiscount() <= 0d) {
+                return pack.getPrice();
+            }
+            return pack.getPrice() + sale.getDiscount();
+        }
+
+        @Nonnull
+        private static String formatMoney(double amount) {
+            TebexPlugin plugin = TebexPlugin.get();
+            String symbol = "$";
+            if (plugin.getTebexServerInfo() != null
+                    && plugin.getTebexServerInfo().getAccount() != null
+                    && plugin.getTebexServerInfo().getAccount().getCurrency() != null) {
+                String configured = plugin.getTebexServerInfo().getAccount().getCurrency().getSymbol();
+                if (configured != null && !configured.isBlank()) {
+                    symbol = configured;
+                }
+            }
+            return symbol + String.format(Locale.US, "%.2f", amount);
+        }
+
         private record CardEntry(
                 String action,
                 String value,
@@ -1482,6 +1652,7 @@ public final class BuyGui {
                 String usage,
                 String description,
                 @Nullable String thumbnailTexturePath,
+                @Nullable String itemId,
                 boolean interactive
         ) {
             private static CardEntry button(
@@ -1490,13 +1661,14 @@ public final class BuyGui {
                     String title,
                     String usage,
                     String description,
-                    @Nullable String thumbnailTexturePath
+                    @Nullable String thumbnailTexturePath,
+                    @Nullable String itemId
             ) {
-                return new CardEntry(action, value, title, usage, description, thumbnailTexturePath, true);
+                return new CardEntry(action, value, title, usage, description, thumbnailTexturePath, itemId, true);
             }
 
             private static CardEntry info(String title) {
-                return new CardEntry("", "", title, "", "", null, false);
+                return new CardEntry("", "", title, "", "", null, null, false);
             }
         }
 

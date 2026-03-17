@@ -1,5 +1,6 @@
 package io.tebex.sdk.pluginapi.models;
 
+import com.google.gson.annotations.SerializedName;
 import lombok.Data;
 
 @Data
@@ -10,6 +11,7 @@ public class CategoryPackage {
     private final double price;
     private final String description;
     private final String image;
+    @SerializedName(value = "gui_item", alternate = {"item_id"})
     private final String itemId;
     private final Sale sale;
 
