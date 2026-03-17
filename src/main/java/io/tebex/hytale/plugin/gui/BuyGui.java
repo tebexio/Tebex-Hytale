@@ -697,12 +697,11 @@ public final class BuyGui {
         ) {
             String templatePath = cartSession.getCheckoutTemplateUiPath();
             if (templatePath != null && !templatePath.isBlank() && hasUiPageAsset(templatePath)) {
-                setDetailCardWithTemplate(
+                setCheckoutDetailCard(
                         commands,
-                        templatePath,
                         "Checkout",
                         buildCartSidebarUsage(entries),
-                        "Scan this QR code with your phone, or create the Tebex checkout link in chat."
+                        "Scan the large QR preview on the left with your phone, or create the Tebex checkout link in chat."
                 );
             } else {
                 setCheckoutDetailCard(
