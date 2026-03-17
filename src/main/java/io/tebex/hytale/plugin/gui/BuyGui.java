@@ -134,6 +134,7 @@ public final class BuyGui {
     private static final class TebexStorePage extends InteractiveCustomUIPage<TebexStoreEventData> {
         private static final String STORE_UI = "Pages/TebexStorePage.ui";
         private static final String GRID_ROOT = "#CategoryGrid";
+        private static final String PAGE_TITLE_SLOT = "#PageTitleSlot";
         private static final String HEADER_TITLE_SLOT = "#HeaderTitleSlot";
         private static final String HEADER_SUBTITLE_SLOT = "#HeaderSubtitleSlot";
         private static final String FOOTER_LEFT_SLOT = "#FooterLeftButtonSlot";
@@ -152,6 +153,7 @@ public final class BuyGui {
         private static final String CART_CARD_ICON_TEMPLATE_WIDE = "Pages/TebexCartCardIconWide.ui";
         private static final String DETAIL_CARD_TEMPLATE = "Pages/TebexDetailCard.ui";
         private static final String DETAIL_CARD_CHECKOUT_TEMPLATE = "Pages/TebexDetailCardCheckout.ui";
+        private static final String PAGE_TITLE_TEMPLATE = "Pages/TebexPageTitle.ui";
         private static final String TITLE_TEMPLATE = "Pages/TebexTitleLine.ui";
         private static final String SUBTITLE_TEMPLATE = "Pages/TebexSubtitleLine.ui";
         private static final String PRIMARY_BUTTON_TEMPLATE = "Pages/TebexPrimaryButton.ui";
@@ -207,6 +209,7 @@ public final class BuyGui {
         ) {
             commands.append(STORE_UI);
             commands.clear(GRID_ROOT);
+            commands.clear(PAGE_TITLE_SLOT);
             commands.clear(HEADER_TITLE_SLOT);
             commands.clear(HEADER_SUBTITLE_SLOT);
             commands.clear(FOOTER_LEFT_SLOT);
@@ -214,6 +217,8 @@ public final class BuyGui {
             commands.clear(DETAIL_CARD_SLOT);
             commands.clear(DETAIL_PRIMARY_SLOT);
             commands.clear(DETAIL_SECONDARY_SLOT);
+
+            appendPageTitle(commands);
 
             List<CardEntry> cards = new ArrayList<>();
             FooterConfig footer = switch (mode) {
@@ -232,10 +237,8 @@ public final class BuyGui {
             int totalPages = Math.max(1, (categories.size() + PAGE_SIZE - 1) / PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
 
-            TebexPlugin plugin = TebexPlugin.get();
-            appendStaticText(commands, HEADER_TITLE_SLOT, plugin.getStoreName(), true);
-            String storeUrl = plugin.getStoreUrl();
-            appendStaticText(commands, HEADER_SUBTITLE_SLOT, storeUrl.isBlank() ? "Select a category." : storeUrl, false);
+            appendStaticText(commands, HEADER_TITLE_SLOT, "Categories", true);
+            appendStaticText(commands, HEADER_SUBTITLE_SLOT, "Browse the available store categories.", false);
 
             int from = page * PAGE_SIZE;
             int to = Math.min(categories.size(), from + PAGE_SIZE);
@@ -324,6 +327,18 @@ public final class BuyGui {
                     ? new ButtonEntry(ACTION_NEXT, "", "Next")
                     : new ButtonEntry(ACTION_CLOSE, "", "Close");
             return new FooterConfig(left, right);
+        }
+
+        private void appendPageTitle(@Nonnull UICommandBuilder commands) {
+            TebexPlugin plugin = TebexPlugin.get();
+            String storeName = sanitizeUiText(plugin.getStoreName());
+            String storeUrl = sanitizeUiText(plugin.getStoreUrl());
+            String title = storeName.isBlank() ? "Tebex Store" : storeName;
+            if (!storeUrl.isBlank()) {
+                title = title + " (" + storeUrl + ")";
+            }
+            commands.append(PAGE_TITLE_SLOT, PAGE_TITLE_TEMPLATE);
+            commands.set(PAGE_TITLE_SLOT + "[0].TextSpans", uiText(title, "Tebex Store"));
         }
 
         private FooterConfig buildCartCards(@Nonnull UICommandBuilder commands, @Nonnull List<CardEntry> cards) {
@@ -1249,8 +1264,7 @@ public final class BuyGui {
         @Nonnull
         private String buildStoreOverviewUsage() {
             int categoryCount = getVisibleCategories().size();
-            long activeSales = TebexPlugin.get().getStoreSalesCache().stream().filter(TebexPlugin.StoreSaleInfo::active).count();
-            return categoryCount + " categories available | " + activeSales + " active sale" + (activeSales == 1 ? "" : "s");
+            return categoryCount + " categories available";
         }
 
         @Nonnull
@@ -1266,33 +1280,6 @@ public final class BuyGui {
                 builder.append("Add items to your cart, then generate a checkout link in chat when you are ready. ");
             } else {
                 builder.append("Cart is disabled for this store, so Buy Now creates a direct checkout link. ");
-            }
-
-            List<TebexPlugin.StoreSaleInfo> sales = plugin.getStoreSalesCache();
-            if (!sales.isEmpty()) {
-                builder.append("Promotions: ");
-                for (TebexPlugin.StoreSaleInfo sale : sales) {
-                    if (builder.charAt(builder.length() - 1) != ' ') {
-                        builder.append(' ');
-                    }
-                    builder.append(sale.active() ? "[Active] " : "[Scheduled] ")
-                            .append(sale.name())
-                            .append(" - ")
-                            .append(sale.discountText().isBlank() ? "Sale" : sale.discountText());
-                    if (!sale.scope().isBlank()) {
-                        builder.append(" on ").append(sale.scope());
-                    }
-                    if (!sale.effectiveWindow().isBlank()) {
-                        builder.append(", ").append(sale.effectiveWindow());
-                    }
-                    if (!sale.minimumBasket().isBlank()) {
-                        builder.append(", ").append(sale.minimumBasket());
-                    }
-                    if (!sale.eligibility().isBlank()) {
-                        builder.append(", ").append(sale.eligibility());
-                    }
-                    builder.append(". ");
-                }
             }
             return builder.toString();
         }

@@ -10,9 +10,8 @@ $C.@DecoratedContainer {
       LayoutMode: Center;
       Anchor: (Full: 0);
 
-      $C.@Title {
-        @Text = "TEBEX STORE";
-        Anchor: (Width: 420);
+      Group #PageTitleSlot {
+        Anchor: (Width: 980);
       }
     }
   }
