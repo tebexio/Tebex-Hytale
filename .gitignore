@@ -10,6 +10,9 @@ libs/HytaleServer.jar
 !**/src/test/**/build/
 src/test/*
 
+### Development ###
+sample-*
+
 ### IntelliJ IDEA ###
 .gradle/
 .idea/
