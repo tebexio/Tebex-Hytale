@@ -28,7 +28,7 @@ public class TebexSecretCommand extends CommandBase {
         plugin.getPluginApi().setSecretKey(secretArg.get(ctx));
         plugin.getConfig().get().setSecretKey(secretArg.get(ctx));
         plugin.getConfig().save();
-        plugin.refreshServerInfo();
+        plugin.refreshServerInfo(true);
 
         // make sure the secret key worked by checking if the server is non-null
         var info = plugin.getTebexServerInfo();

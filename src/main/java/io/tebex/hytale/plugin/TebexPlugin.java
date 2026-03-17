@@ -166,9 +166,18 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     protected void setup() {
         super.setup();
         debug("Tebex has reached the setup phase.");
-        precreateRuntimeThumbnailAssetPackStubIfNeeded();
         registerCommands();
         registerEvents();
+    }
+
+    @Override
+    public CompletableFuture<Void> preLoad() {
+        CompletableFuture<Void> parent = super.preLoad();
+        if (parent == null) {
+            precreateRuntimeThumbnailAssetPackStubIfNeeded();
+            return CompletableFuture.completedFuture(null);
+        }
+        return parent.thenRun(this::precreateRuntimeThumbnailAssetPackStubIfNeeded);
     }
 
     // the start phase is run after setup, late in the startup process, just before the "Hytale Server Booted!" splash
@@ -507,6 +516,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             boolean assetPackCreated = Files.notExists(runtimeAssetPackRoot());
             Files.createDirectories(runtimeAssetPackRoot());
             ensureRuntimeThumbnailAssetPackManifest();
+            Files.createDirectories(runtimePageDirectory());
+            Files.createDirectories(runtimeThumbnailDirectory());
             if (assetPackCreated) {
                 info("Pre-created Tebex thumbnail asset pack stub at " + runtimeAssetPackRoot().toAbsolutePath() + " before store registration.");
             }
