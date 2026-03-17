@@ -166,6 +166,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     protected void setup() {
         super.setup();
         debug("Tebex has reached the setup phase.");
+        precreateRuntimeThumbnailAssetPackStubIfNeeded();
         registerCommands();
         registerEvents();
     }
@@ -495,6 +496,34 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                     "Restart the server once so Hytale registers the new asset pack from the mods folder. After that, thumbnail file updates should use the same asset-pack path."
             );
         }
+    }
+
+    private void precreateRuntimeThumbnailAssetPackStubIfNeeded() {
+        if (hasAnyConfiguredSecretKey()) {
+            return;
+        }
+
+        try {
+            boolean assetPackCreated = Files.notExists(runtimeAssetPackRoot());
+            Files.createDirectories(runtimeAssetPackRoot());
+            ensureRuntimeThumbnailAssetPackManifest();
+            if (assetPackCreated) {
+                info("Pre-created Tebex thumbnail asset pack stub at " + runtimeAssetPackRoot().toAbsolutePath() + " before store registration.");
+            }
+        } catch (Exception e) {
+            error("Failed to pre-create Tebex thumbnail asset pack stub during setup", e);
+        }
+    }
+
+    private boolean hasAnyConfiguredSecretKey() {
+        String envSecretKey = System.getenv("TEBEX_SECRET_KEY");
+        if (envSecretKey != null && !envSecretKey.isBlank()) {
+            return true;
+        }
+
+        TebexConfig cfg = this.config == null ? null : this.config.get();
+        String configSecretKey = cfg == null ? null : cfg.getSecretKey();
+        return configSecretKey != null && !configSecretKey.isBlank();
     }
 
     @Nonnull
