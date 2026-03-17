@@ -3,7 +3,7 @@ $C = "../Common.ui";
 Label #Line {
   Style: (
     ...$C.@TitleStyle,
-    FontSize: 34,
+    FontSize: 38,
     TextColor: $C.@ColorGoldHighlight,
     HorizontalAlignment: Start,
     RenderUppercase: true,

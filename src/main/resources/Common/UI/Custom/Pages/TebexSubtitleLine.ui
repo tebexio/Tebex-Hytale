@@ -2,7 +2,7 @@ $C = "../Common.ui";
 
 Label #Line {
   Style: (
-    FontSize: 15,
+    FontSize: 16,
     TextColor: $C.@ColorDefaultLabel,
     HorizontalAlignment: Start
   );

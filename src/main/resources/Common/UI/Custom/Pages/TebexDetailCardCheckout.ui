@@ -2,31 +2,31 @@ $C = "../Common.ui";
 
 Group #Card {
   LayoutMode: Top;
-  Padding: (Full: 12);
-  Background: #0f1b2d(0.88);
+  Padding: (Full: 16);
+  Background: #102034(0.92);
 
   Label #SubcommandName {
     Style: (
-      FontSize: 20,
+      FontSize: 22,
       RenderBold: true,
       TextColor: $C.@ColorDefault,
       RenderUppercase: true
     );
-    Anchor: (Bottom: 4);
+    Anchor: (Bottom: 6);
   }
 
   Label #SubcommandUsage {
     Style: (
-      FontSize: 14,
+      FontSize: 15,
       RenderBold: true,
       TextColor: $C.@ColorGoldHighlight
     );
-    Anchor: (Bottom: 8);
+    Anchor: (Bottom: 10);
   }
 
   Label #SubcommandDescription {
     Style: (
-      FontSize: 13,
+      FontSize: 14,
       TextColor: $C.@ColorDefaultLabel,
       Wrap: true
     );

@@ -238,7 +238,7 @@ public final class BuyGui {
                         ACTION_OPEN_CATEGORY,
                         Integer.toString(category.getId()),
                         category.getName(),
-                        packageCount + " package" + (packageCount == 1 ? "" : "s"),
+                        uiText(packageCount + " package" + (packageCount == 1 ? "" : "s"), ""),
                         "Open category",
                         resolveCategoryThumbnailTexture(category),
                         resolveCategoryItemId(category)
@@ -296,7 +296,7 @@ public final class BuyGui {
                         ACTION_SELECT_PACKAGE,
                         Integer.toString(pack.getId()),
                         pack.getName(),
-                        buildPackagePriceLine(pack),
+                        buildPackagePriceMessage(pack),
                         summarizeDescription(resolvePackageDescription(pack)),
                         resolveCardThumbnailTexture(pack),
                         resolvePackageItemId(pack)
@@ -332,7 +332,7 @@ public final class BuyGui {
                         ACTION_SELECT_CART_ITEM,
                         Integer.toString(entry.pack().getId()),
                         entry.pack().getName(),
-                        buildCartEntryUsage(entry),
+                        buildCartEntryUsageMessage(entry),
                         summarizeDescription(resolvePackageDescription(entry.pack())),
                         resolveCardThumbnailTexture(entry.pack()),
                         resolvePackageItemId(entry.pack())
@@ -375,7 +375,7 @@ public final class BuyGui {
                 String template = resolveCardTemplate(singleColumn, card.thumbnailTexturePath, card.itemId);
                 commands.append(gridRowSelector(rowIndex), template);
                 commands.set(cardNameSelector(rowIndex, colIndex), uiText(card.title, "Item"));
-                commands.set(cardUsageSelector(rowIndex, colIndex), uiText(card.usage, ""));
+                commands.set(cardUsageSelector(rowIndex, colIndex), card.usage);
                 commands.set(cardDescriptionSelector(rowIndex, colIndex), uiText(card.description, ""));
                 if (isIconTemplate(template) && card.itemId != null && !card.itemId.isBlank()) {
                     commands.set(cardItemIdSelector(rowIndex, colIndex), card.itemId);
@@ -411,7 +411,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Store Overview",
-                        buildStoreOverviewUsage(),
+                        uiText(buildStoreOverviewUsage(), ""),
                         buildStoreOverviewDescription()
                 );
                 if (isCartEnabled() && !cartSession.isEmpty()) {
@@ -437,7 +437,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Store Overview",
-                        buildStoreOverviewUsage(),
+                        uiText(buildStoreOverviewUsage(), ""),
                         buildStoreOverviewDescription()
                 );
                 return;
@@ -448,7 +448,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Select a package",
-                        selectedCategory.getName(),
+                        uiText(selectedCategory.getName(), ""),
                         "Click any package card to load detailed information before purchase."
                 );
                 if (isCartEnabled()) {
@@ -467,7 +467,7 @@ public final class BuyGui {
             setDetailCard(
                     commands,
                     selectedPack.getName(),
-                    buildPackagePriceLine(selectedPack),
+                    buildPackagePriceMessage(selectedPack),
                     buildPackageDetailDescription(selectedPack)
             );
 
@@ -503,7 +503,7 @@ public final class BuyGui {
                 setDetailCard(
                         commands,
                         "Cart Empty",
-                        "No packages added",
+                        uiText("No packages added", ""),
                         "Add packages from the store, then checkout to generate your checkout link."
                 );
                 return;
@@ -513,7 +513,7 @@ public final class BuyGui {
                 setCheckoutDetailCard(
                         commands,
                         "Checkout Ready",
-                        "Open checkout link",
+                        uiText("Open checkout link", ""),
                         "Checkout URL: " + cartSession.getCheckoutUrl()
                 );
                 appendButton(
@@ -535,7 +535,7 @@ public final class BuyGui {
             setDetailCard(
                     commands,
                     selectedEntry.pack().getName(),
-                    buildCartEntryUsage(selectedEntry),
+                    buildCartEntryUsageMessage(selectedEntry),
                     buildPackageDetailDescription(selectedEntry.pack())
             );
             appendButton(
@@ -557,24 +557,24 @@ public final class BuyGui {
         private void setDetailCard(
                 @Nonnull UICommandBuilder commands,
                 @Nonnull String title,
-                @Nonnull String usage,
+                @Nonnull Message usage,
                 @Nonnull String description
         ) {
             commands.append(DETAIL_CARD_SLOT, DETAIL_CARD_TEMPLATE);
             commands.set(detailCardNameSelector(), uiText(title, "Details"));
-            commands.set(detailCardUsageSelector(), uiText(usage, ""));
+            commands.set(detailCardUsageSelector(), usage);
             commands.set(detailCardDescriptionSelector(), uiText(description, ""));
         }
 
         private void setCheckoutDetailCard(
                 @Nonnull UICommandBuilder commands,
                 @Nonnull String title,
-                @Nonnull String usage,
+                @Nonnull Message usage,
                 @Nonnull String description
         ) {
             commands.append(DETAIL_CARD_SLOT, DETAIL_CARD_CHECKOUT_TEMPLATE);
             commands.set(detailCardNameSelector(), uiText(title, "Details"));
-            commands.set(detailCardUsageSelector(), uiText(usage, ""));
+            commands.set(detailCardUsageSelector(), usage);
             commands.set(detailCardDescriptionSelector(), uiText(description, ""));
         }
 
@@ -1421,10 +1421,10 @@ public final class BuyGui {
             if (description.isBlank()) {
                 return "No description available";
             }
-            if (description.length() <= 92) {
+            if (description.length() <= 132) {
                 return description;
             }
-            return description.substring(0, 89).trim() + "...";
+            return description.substring(0, 129).trim() + "...";
         }
 
         private void debugPackageDescriptionFields(@Nonnull String context, @Nonnull CategoryPackage pack) {
@@ -1603,23 +1603,24 @@ public final class BuyGui {
         }
 
         @Nonnull
-        private static String buildPackagePriceLine(@Nonnull CategoryPackage pack) {
+        private static Message buildPackagePriceMessage(@Nonnull CategoryPackage pack) {
             double current = Math.max(0d, pack.getPrice());
             double original = resolveOriginalPrice(pack);
             if (original > current) {
-                return formatMoney(current) + " | Was " + formatMoney(original);
+                return buildSalePriceMessage(current, original);
             }
-            return formatMoney(current);
+            return plainPriceMessage(current);
         }
 
         @Nonnull
-        private static String buildCartEntryUsage(@Nonnull CartEntry entry) {
+        private static Message buildCartEntryUsageMessage(@Nonnull CartEntry entry) {
             double currentSubtotal = Math.max(0d, entry.subtotal());
             double originalSubtotal = resolveOriginalPrice(entry.pack()) * entry.quantity();
+            Message prefix = uiText("Qty " + entry.quantity() + " | ", "");
             if (originalSubtotal > currentSubtotal) {
-                return "Qty " + entry.quantity() + " | " + formatMoney(currentSubtotal) + " | Was " + formatMoney(originalSubtotal);
+                return prefix.insert(buildSalePriceMessage(currentSubtotal, originalSubtotal));
             }
-            return "Qty " + entry.quantity() + " | " + formatMoney(currentSubtotal);
+            return prefix.insert(plainPriceMessage(currentSubtotal));
         }
 
         private static double resolveOriginalPrice(@Nonnull CategoryPackage pack) {
@@ -1645,11 +1646,24 @@ public final class BuyGui {
             return symbol + String.format(Locale.US, "%.2f", amount);
         }
 
+        @Nonnull
+        private static Message plainPriceMessage(double amount) {
+            return Message.raw(formatMoney(amount)).color("#8fe36c").bold(true);
+        }
+
+        @Nonnull
+        private static Message buildSalePriceMessage(double current, double original) {
+            Message message = plainPriceMessage(current);
+            message.insert(Message.raw("  "));
+            message.insert(Message.raw(formatMoney(original)).color("#6d7c91"));
+            return message;
+        }
+
         private record CardEntry(
                 String action,
                 String value,
                 String title,
-                String usage,
+                Message usage,
                 String description,
                 @Nullable String thumbnailTexturePath,
                 @Nullable String itemId,
@@ -1659,7 +1673,7 @@ public final class BuyGui {
                     String action,
                     String value,
                     String title,
-                    String usage,
+                    Message usage,
                     String description,
                     @Nullable String thumbnailTexturePath,
                     @Nullable String itemId
@@ -1668,7 +1682,7 @@ public final class BuyGui {
             }
 
             private static CardEntry info(String title) {
-                return new CardEntry("", "", title, "", "", null, null, false);
+                return new CardEntry("", "", title, Message.empty(), "", null, null, false);
             }
         }
 
