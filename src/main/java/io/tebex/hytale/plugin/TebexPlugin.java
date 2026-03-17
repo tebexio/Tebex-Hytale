@@ -24,6 +24,8 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
 import io.tebex.hytale.plugin.commands.BuyCommand;
 import io.tebex.hytale.plugin.commands.TebexCommand;
+import io.tebex.hytale.plugin.qr.QrCode;
+import io.tebex.hytale.plugin.qr.QrCodePngRenderer;
 import io.tebex.sdk.headlessapi.HeadlessApi;
 import io.tebex.sdk.headlessapi.models.HeadlessCategory;
 import io.tebex.sdk.headlessapi.models.HeadlessPackage;
@@ -87,6 +89,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private static final String RUNTIME_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedStoreCardWide_";
     private static final String RUNTIME_CART_CARD_TEMPLATE_PREFIX = "TebexGeneratedCartCard_";
     private static final String RUNTIME_CART_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedCartCardWide_";
+    private static final String RUNTIME_CHECKOUT_TEMPLATE_PREFIX = "TebexGeneratedCheckout_";
+    private static final String RUNTIME_CHECKOUT_QR_PREFIX = "checkout-qr-";
     private static final List<String> LEGACY_RUNTIME_CACHE_DIRECTORIES = List.of(
             "runtime-assets",
             THUMBNAIL_CACHE_DIRECTORY + "/TebexStoreThumbnails",
@@ -103,6 +107,9 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private static final String RUNTIME_THUMBNAIL_PLACEHOLDER = "_placeholder.png";
     private static final int RUNTIME_THUMBNAIL_SIZE = 96;
     private static final int RUNTIME_THUMBNAIL_SIZE_2X = 192;
+    private static final int RUNTIME_CHECKOUT_QR_TARGET_SIZE = 256;
+    private static final int RUNTIME_CHECKOUT_QR_TARGET_SIZE_2X = 512;
+    private static final int RUNTIME_CHECKOUT_QR_QUIET_ZONE_MODULES = 4;
 
     // tebex apis
     @Getter private PluginApi pluginApi;
@@ -581,6 +588,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private Path runtimeCheckoutTemplatePath(@Nonnull String assetKey) {
+        return runtimePageDirectory().resolve(runtimeCheckoutTemplateFileName(assetKey));
+    }
+
+    @Nonnull
     private static String runtimeThumbnailTexturePath(@Nonnull String fileName) {
         return RUNTIME_THUMBNAIL_TEXTURE_PREFIX + "/" + fileName;
     }
@@ -603,6 +615,11 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
             fileName = fileName.substring(lastSlash + 1);
         }
         return "Pages/" + runtimeThumbnailCartCardTemplateFileName(fileName, wide);
+    }
+
+    @Nonnull
+    public static String runtimeCheckoutTemplateUiPath(@Nonnull String assetKey) {
+        return "Pages/" + runtimeCheckoutTemplateFileName(assetKey);
     }
 
     @Nonnull
@@ -636,6 +653,27 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
         String safeBase = base.replaceAll("[^A-Za-z0-9_-]", "_");
         return prefix + safeBase + ".ui";
+    }
+
+    @Nonnull
+    private static String runtimeCheckoutQrFileName(@Nonnull String assetKey) {
+        return RUNTIME_CHECKOUT_QR_PREFIX + sanitizeRuntimeAssetKey(assetKey) + ".png";
+    }
+
+    @Nonnull
+    private static String runtimeCheckoutTemplateFileName(@Nonnull String assetKey) {
+        return RUNTIME_CHECKOUT_TEMPLATE_PREFIX + sanitizeRuntimeAssetKey(assetKey) + ".ui";
+    }
+
+    @Nonnull
+    private static String sanitizeRuntimeAssetKey(@Nonnull String assetKey) {
+        String normalized = assetKey.replace('\\', '/');
+        int lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            normalized = normalized.substring(lastSlash + 1);
+        }
+        String safe = normalized.replaceAll("[^A-Za-z0-9_-]", "_");
+        return safe.isBlank() ? "runtime" : safe;
     }
 
     private void cleanupLegacyRuntimeThumbnailDirectory() {
@@ -984,6 +1022,51 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    public synchronized CheckoutPreviewAsset generateCheckoutPreviewAsset(
+            @Nonnull String assetKey,
+            @Nonnull String checkoutUrl
+    ) throws IOException {
+        ensureRuntimeThumbnailWorkspace();
+
+        String safeKey = sanitizeRuntimeAssetKey(assetKey);
+        String fileName = runtimeCheckoutQrFileName(safeKey);
+        String fileName2x = runtimeThumbnail2xFileName(fileName);
+        Path outputPath = runtimeThumbnailPath(fileName);
+        Path outputPath2x = runtimeThumbnailPath(fileName2x);
+        Path templatePath = runtimeCheckoutTemplatePath(safeKey);
+        QrCode qrCode = QrCode.encodeText(checkoutUrl, QrCode.ErrorCorrectionLevel.MEDIUM);
+
+        writeCheckoutQrPng(qrCode, outputPath, RUNTIME_CHECKOUT_QR_TARGET_SIZE);
+        writeCheckoutQrPng(qrCode, outputPath2x, RUNTIME_CHECKOUT_QR_TARGET_SIZE_2X);
+        Files.writeString(
+                templatePath,
+                buildRuntimeCheckoutPreviewTemplate(fileName),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+        );
+        return new CheckoutPreviewAsset(runtimeThumbnailTexturePath(fileName), runtimeCheckoutTemplateUiPath(safeKey));
+    }
+
+    private static void writeCheckoutQrPng(
+            @Nonnull QrCode qrCode,
+            @Nonnull Path outputPath,
+            int targetTextureSize
+    ) throws IOException {
+        int qrWithQuietZone = qrCode.getSize() + (RUNTIME_CHECKOUT_QR_QUIET_ZONE_MODULES * 2);
+        int modulePixels = Math.max(1, targetTextureSize / Math.max(1, qrWithQuietZone));
+        BufferedImage image = QrCodePngRenderer.render(qrCode, modulePixels, RUNTIME_CHECKOUT_QR_QUIET_ZONE_MODULES);
+        Path parent = outputPath.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        if (!ImageIO.write(image, "png", outputPath.toFile())) {
+            throw new IOException("No PNG writer available while writing checkout QR preview.");
+        }
+    }
+
+    @Nonnull
     private static String buildRuntimeThumbnailCardTemplate(@Nonnull String imageFileName, boolean wide) {
         String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
         String anchor = wide
@@ -1149,6 +1232,61 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private static String buildRuntimeCheckoutPreviewTemplate(@Nonnull String imageFileName) {
+        String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
+        return "$C = \"../Common.ui\";\n"
+                + "\n"
+                + "Group #Card {\n"
+                + "  Anchor: (Width: 1008, Height: 600, Bottom: 0);\n"
+                + "  LayoutMode: Top;\n"
+                + "  Padding: (Full: 28);\n"
+                + "  Background: #10253a(0.96);\n"
+                + "\n"
+                + "  Label #SubcommandName {\n"
+                + "    Style: (\n"
+                + "      FontSize: 28,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorDefault\n"
+                + "    );\n"
+                + "    Anchor: (Bottom: 10);\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #SubcommandUsage {\n"
+                + "    Style: (\n"
+                + "      FontSize: 17,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorGoldHighlight\n"
+                + "    );\n"
+                + "    Anchor: (Bottom: 20);\n"
+                + "  }\n"
+                + "\n"
+                + "  Group {\n"
+                + "    Anchor: (Width: 952, Height: 430, Bottom: 18);\n"
+                + "    LayoutMode: Center;\n"
+                + "\n"
+                + "    Group #CheckoutQrFrame {\n"
+                + "      Anchor: (Width: 420, Height: 420);\n"
+                + "      Background: #f4f7fb;\n"
+                + "      Padding: (Full: 8);\n"
+                + "\n"
+                + "      Group #CheckoutQrImage {\n"
+                + "        Anchor: (Full: 0);\n"
+                + "        Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "      }\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #SubcommandDescription {\n"
+                + "    Style: (\n"
+                + "      FontSize: 16,\n"
+                + "      TextColor: $C.@ColorDefaultLabel,\n"
+                + "      Wrap: true\n"
+                + "    );\n"
+                + "  }\n"
+                + "}\n";
+    }
+
+    @Nonnull
     public synchronized AssetPackRebuildResult rebuildThumbnailAssetPack() {
         AssetPackRebuildResult refreshFailure = refreshStoreDataForThumbnailRebuild();
         if (refreshFailure != null) {
@@ -1286,7 +1424,10 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         String normalized = fileName.trim();
         return normalized.endsWith(".ui")
                 && (normalized.startsWith(RUNTIME_CARD_TEMPLATE_PREFIX)
-                || normalized.startsWith(RUNTIME_CARD_WIDE_TEMPLATE_PREFIX));
+                || normalized.startsWith(RUNTIME_CARD_WIDE_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_CART_CARD_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_CART_CARD_WIDE_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_CHECKOUT_TEMPLATE_PREFIX));
     }
 
     @Nonnull
@@ -2347,6 +2488,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         public String nextStep() {
             return nextStep;
         }
+    }
+
+    @Data
+    public static final class CheckoutPreviewAsset {
+        private final String texturePath;
+        private final String templateUiPath;
     }
 
     @Data

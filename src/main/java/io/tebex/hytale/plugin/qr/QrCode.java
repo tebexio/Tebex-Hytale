@@ -195,17 +195,9 @@ public final class QrCode {
             }
         }
 
-        for (int i = 0; i < 8; i++) {
-            if (i != 6) {
-                setFunctionModule(8, i, false);
-                setFunctionModule(i, 8, false);
-            }
-        }
-        for (int i = 0; i < 7; i++) {
-            setFunctionModule(size - 1 - i, 8, false);
-            setFunctionModule(8, size - 1 - i, false);
-        }
-        setFunctionModule(8, size - 8, true);
+        // Reserve the format information area using the standard placement logic.
+        // The final mask-specific bits are written later after mask selection.
+        drawFormatBits(0);
 
         if (version >= 7) {
             for (int i = 0; i < 6; i++) {

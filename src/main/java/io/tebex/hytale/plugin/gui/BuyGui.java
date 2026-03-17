@@ -165,6 +165,7 @@ public final class BuyGui {
         private static final int CARDS_PER_ROW = 2;
         private static final int PAGE_SIZE = 6;
         private static final int CART_PAGE_SIZE = 4;
+        private static final long CHECKOUT_PREVIEW_MIN_LOADING_MILLIS = 6500L;
 
         private static final String ACTION_OPEN_CATEGORY = "open_category";
         private static final String ACTION_SELECT_PACKAGE = "select_package";
@@ -177,6 +178,8 @@ public final class BuyGui {
         private static final String ACTION_DECREMENT_CART_ITEM = "decrement_cart_item";
         private static final String ACTION_CLEAR_CART = "clear_cart";
         private static final String ACTION_CHECKOUT_CART = "checkout_cart";
+        private static final String ACTION_REFRESH_CHECKOUT = "refresh_checkout";
+        private static final String ACTION_SEND_CHECKOUT_LINK = "send_checkout_link";
         private static final String ACTION_BACK = "back";
         private static final String ACTION_PREV = "prev";
         private static final String ACTION_NEXT = "next";
@@ -227,7 +230,11 @@ public final class BuyGui {
                 case CART -> buildCartCards(commands, cards);
             };
 
-            renderCards(commands, events, cards);
+            if (shouldRenderCheckoutPreviewCanvas()) {
+                renderCheckoutPreviewCanvas(commands);
+            } else {
+                renderCards(commands, events, cards);
+            }
             renderFooter(commands, events, footer);
             renderDetails(commands, events);
         }
@@ -342,6 +349,12 @@ public final class BuyGui {
         }
 
         private FooterConfig buildCartCards(@Nonnull UICommandBuilder commands, @Nonnull List<CardEntry> cards) {
+            if (shouldRenderCheckoutPreviewCanvas()) {
+                appendStaticText(commands, HEADER_TITLE_SLOT, "Checkout", true);
+                appendStaticText(commands, HEADER_SUBTITLE_SLOT, "Scan the QR code with your phone, or create the Tebex checkout link in chat.", false);
+                return new FooterConfig(new ButtonEntry(ACTION_BACK, "", "Continue Shopping"), null);
+            }
+
             List<CartEntry> entries = getCartEntries();
             int totalPages = Math.max(1, (entries.size() + CART_PAGE_SIZE - 1) / CART_PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
@@ -376,10 +389,16 @@ public final class BuyGui {
                 right = new ButtonEntry(ACTION_NEXT, "", "Next");
             } else if (entries.isEmpty()) {
                 right = new ButtonEntry(ACTION_CLOSE, "", "Close");
+            } else if (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview()) {
+                right = null;
             } else {
-                right = new ButtonEntry(ACTION_CHECKOUT_CART, "", "Create Checkout Link");
+                right = new ButtonEntry(ACTION_CHECKOUT_CART, "", "Checkout");
             }
             return new FooterConfig(left, right);
+        }
+
+        private boolean shouldRenderCheckoutPreviewCanvas() {
+            return mode == Mode.CART && (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview());
         }
 
         private void renderCards(
@@ -595,6 +614,24 @@ public final class BuyGui {
             }
         }
 
+        private void renderCheckoutPreviewCanvas(@Nonnull UICommandBuilder commands) {
+            if (cartSession.hasCheckoutPreview()) {
+                String templatePath = cartSession.getCheckoutTemplateUiPath();
+                if (templatePath != null && !templatePath.isBlank() && hasUiPageAsset(templatePath)) {
+                    commands.append(GRID_ROOT, templatePath);
+                    commands.set(gridPreviewNameSelector(), uiText("Scan To Checkout", "Scan To Checkout"));
+                    commands.set(gridPreviewUsageSelector(), uiText("Use your phone camera to open the Tebex checkout.", ""));
+                    commands.set(gridPreviewDescriptionSelector(), uiText("If your phone does not pick it up immediately, hold still for a moment or use Refresh to regenerate the QR.", ""));
+                    return;
+                }
+            }
+
+            commands.append(GRID_ROOT, DETAIL_CARD_TEMPLATE);
+            commands.set(gridPreviewNameSelector(), uiText("Preparing Checkout", "Preparing Checkout"));
+            commands.set(gridPreviewUsageSelector(), uiText("Generating QR preview", ""));
+            commands.set(gridPreviewDescriptionSelector(), uiText("Please wait while the Tebex checkout QR is generated and registered in the asset pack.", ""));
+        }
+
         private void renderCartDetails(@Nonnull UICommandBuilder commands, @Nonnull UIEventBuilder events) {
             List<CartEntry> entries = getCartEntries();
             if (entries.isEmpty()) {
@@ -616,6 +653,28 @@ public final class BuyGui {
                 return;
             }
 
+            if (cartSession.isCheckoutPreviewLoading()) {
+                setCheckoutDetailCard(
+                        commands,
+                        "Checkout",
+                        uiText("Preparing QR preview", ""),
+                        "Generating a Tebex QR code from your current basket. If the preview does not appear automatically, press Refresh."
+                );
+                appendButton(
+                        commands,
+                        events,
+                        DETAIL_PRIMARY_SLOT,
+                        new ButtonEntry(ACTION_REFRESH_CHECKOUT, "", "Refresh"),
+                        false
+                );
+                return;
+            }
+
+            if (cartSession.hasCheckoutPreview()) {
+                renderCheckoutPreviewDetails(commands, events, entries);
+                return;
+            }
+
             setDetailCard(
                     commands,
                     "Cart Summary",
@@ -627,7 +686,46 @@ public final class BuyGui {
                     events,
                     DETAIL_PRIMARY_SLOT,
                     new ButtonEntry(ACTION_CLEAR_CART, "", "Clear Cart"),
+                false
+            );
+        }
+
+        private void renderCheckoutPreviewDetails(
+                @Nonnull UICommandBuilder commands,
+                @Nonnull UIEventBuilder events,
+                @Nonnull List<CartEntry> entries
+        ) {
+            String templatePath = cartSession.getCheckoutTemplateUiPath();
+            if (templatePath != null && !templatePath.isBlank() && hasUiPageAsset(templatePath)) {
+                setDetailCardWithTemplate(
+                        commands,
+                        templatePath,
+                        "Checkout",
+                        buildCartSidebarUsage(entries),
+                        "Scan this QR code with your phone, or create the Tebex checkout link in chat."
+                );
+            } else {
+                setCheckoutDetailCard(
+                        commands,
+                        "Checkout",
+                        uiText("Loading QR preview", ""),
+                        "The Tebex checkout QR is being loaded from the runtime asset pack. Press Refresh if it does not appear."
+                );
+            }
+
+            appendButton(
+                    commands,
+                    events,
+                    DETAIL_PRIMARY_SLOT,
+                    new ButtonEntry(ACTION_REFRESH_CHECKOUT, "", "Refresh"),
                     false
+            );
+            appendButton(
+                    commands,
+                    events,
+                    DETAIL_SECONDARY_SLOT,
+                    new ButtonEntry(ACTION_SEND_CHECKOUT_LINK, "", "Create Checkout Link"),
+                    true
             );
         }
 
@@ -637,10 +735,7 @@ public final class BuyGui {
                 @Nonnull Message usage,
                 @Nonnull String description
         ) {
-            commands.append(DETAIL_CARD_SLOT, DETAIL_CARD_TEMPLATE);
-            commands.set(detailCardNameSelector(), uiText(title, "Details"));
-            commands.set(detailCardUsageSelector(), usage);
-            commands.set(detailCardDescriptionSelector(), uiText(description, ""));
+            setDetailCardWithTemplate(commands, DETAIL_CARD_TEMPLATE, title, usage, description);
         }
 
         private void setCheckoutDetailCard(
@@ -649,7 +744,17 @@ public final class BuyGui {
                 @Nonnull Message usage,
                 @Nonnull String description
         ) {
-            commands.append(DETAIL_CARD_SLOT, DETAIL_CARD_CHECKOUT_TEMPLATE);
+            setDetailCardWithTemplate(commands, DETAIL_CARD_CHECKOUT_TEMPLATE, title, usage, description);
+        }
+
+        private void setDetailCardWithTemplate(
+                @Nonnull UICommandBuilder commands,
+                @Nonnull String templatePath,
+                @Nonnull String title,
+                @Nonnull Message usage,
+                @Nonnull String description
+        ) {
+            commands.append(DETAIL_CARD_SLOT, templatePath);
             commands.set(detailCardNameSelector(), uiText(title, "Details"));
             commands.set(detailCardUsageSelector(), usage);
             commands.set(detailCardDescriptionSelector(), uiText(description, ""));
@@ -795,10 +900,26 @@ public final class BuyGui {
                         sendPlayerMessage(ref, store, Message.raw("Your cart is empty."));
                         return;
                     }
-                    sendPlayerMessage(ref, store, Message.raw("Preparing your checkout link..."));
-                    createCheckoutFromCartAsync(ref, store, cartSession.snapshotQuantities(), true);
+                    cartSession.beginCheckoutPreview();
+                    rebuild();
+                    prepareCheckoutPreviewAsync(ref, store);
+                }
+                case ACTION_REFRESH_CHECKOUT -> {
+                    if (cartSession.isEmpty()) {
+                        sendPlayerMessage(ref, store, Message.raw("Your cart is empty."));
+                        return;
+                    }
+                    cartSession.beginCheckoutPreview();
+                    rebuild();
+                    prepareCheckoutPreviewAsync(ref, store);
+                }
+                case ACTION_SEND_CHECKOUT_LINK -> {
+                    sendCheckoutLinkToChat(ref, store);
                 }
                 case ACTION_BACK -> {
+                    if (mode == Mode.CART && (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview())) {
+                        cartSession.clearCheckoutPreview();
+                    }
                     if (mode == Mode.CART && selectedCategory != null) {
                         mode = Mode.PACKAGES;
                     } else {
@@ -1006,6 +1127,82 @@ public final class BuyGui {
             });
         }
 
+        private void prepareCheckoutPreviewAsync(
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull Store<EntityStore> store
+        ) {
+            TebexPlugin plugin = TebexPlugin.get();
+            CompletableFuture.runAsync(() -> {
+                long previewStartedAt = System.currentTimeMillis();
+                try {
+                    String basketIdent = ensureCartBasketIdent(plugin);
+                    Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
+                    syncCartSessionFromBasket(basket);
+
+                    String checkoutUrl = basket.getLinks() == null ? null : basket.getLinks().getCheckout();
+                    if (checkoutUrl == null || checkoutUrl.isBlank()) {
+                        throw new IOException("Headless basket did not return a checkout URL.");
+                    }
+
+                    TebexPlugin.CheckoutPreviewAsset previewAsset = plugin.generateCheckoutPreviewAsset(
+                            basketIdent,
+                            checkoutUrl
+                    );
+                    waitForCheckoutPreviewAsset(previewAsset.getTemplateUiPath());
+                    waitForMinimumCheckoutPreviewDelay(previewStartedAt);
+                    boolean startPaymentPoll = cartSession.beginPaymentPoll(basketIdent);
+
+                    World world = store.getExternalData().getWorld();
+                    world.execute(() -> {
+                        cartSession.setCheckoutPreview(checkoutUrl, previewAsset.getTemplateUiPath());
+                        rebuild();
+                    });
+                    if (startPaymentPoll) {
+                        pollForPaymentCompletionAsync(ref, store, basketIdent);
+                    }
+                } catch (Exception e) {
+                    plugin.error("Failed to prepare checkout QR preview", e);
+                    String message = e.getMessage() == null || e.getMessage().isBlank()
+                            ? e.getClass().getSimpleName()
+                            : e.getMessage();
+                    World world = store.getExternalData().getWorld();
+                    world.execute(() -> {
+                        cartSession.clearCheckoutPreview();
+                        sendPlayerMessage(ref, store, Message.raw("Failed to prepare checkout preview: " + message));
+                        rebuild();
+                    });
+                }
+            });
+        }
+
+        private void waitForMinimumCheckoutPreviewDelay(long previewStartedAt) {
+            long elapsed = System.currentTimeMillis() - previewStartedAt;
+            long remaining = CHECKOUT_PREVIEW_MIN_LOADING_MILLIS - elapsed;
+            if (remaining <= 0L) {
+                return;
+            }
+            try {
+                Thread.sleep(remaining);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private void waitForCheckoutPreviewAsset(@Nonnull String templateUiPath) {
+            long deadline = System.currentTimeMillis() + 7000L;
+            while (System.currentTimeMillis() < deadline) {
+                if (hasUiPageAsset(templateUiPath)) {
+                    return;
+                }
+                try {
+                    Thread.sleep(100L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+
         private void createCheckoutFromCartAsync(
                 @Nonnull Ref<EntityStore> ref,
                 @Nonnull Store<EntityStore> store,
@@ -1045,7 +1242,7 @@ public final class BuyGui {
                         }
                         Player player = store.getComponent(ref, Player.getComponentType());
                         if (player != null) {
-                            cartSession.setCheckoutPreview(checkoutUrl);
+                            cartSession.clearCheckoutPreview();
                             player.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
                             player.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
                             close();
@@ -1066,6 +1263,33 @@ public final class BuyGui {
             });
         }
 
+        private void sendCheckoutLinkToChat(
+                @Nonnull Ref<EntityStore> ref,
+                @Nonnull Store<EntityStore> store
+        ) {
+            String checkoutUrl = cartSession.getCheckoutUrl();
+            if (checkoutUrl.isBlank()) {
+                sendPlayerMessage(ref, store, Message.raw("Create a checkout preview first."));
+                return;
+            }
+
+            if (!ref.isValid()) {
+                return;
+            }
+            Player player = store.getComponent(ref, Player.getComponentType());
+            if (player == null) {
+                return;
+            }
+
+            player.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
+            player.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
+            String basketIdent = cartSession.getBasketIdent();
+            if (cartSession.beginPaymentPoll(basketIdent)) {
+                pollForPaymentCompletionAsync(ref, store, basketIdent);
+            }
+            close();
+        }
+
         private void pollForPaymentCompletionAsync(
                 @Nonnull Ref<EntityStore> ref,
                 @Nonnull Store<EntityStore> store,
@@ -1073,37 +1297,41 @@ public final class BuyGui {
         ) {
             TebexPlugin plugin = TebexPlugin.get();
             CompletableFuture.runAsync(() -> {
-                long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
-                while (System.currentTimeMillis() < expiresAt) {
-                    try {
-                        Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
-                        syncCartSessionFromBasket(basket);
+                try {
+                    long expiresAt = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10);
+                    while (System.currentTimeMillis() < expiresAt) {
+                        try {
+                            Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
+                            syncCartSessionFromBasket(basket);
 
-                        boolean complete = basket.isComplete();
-                        if (!complete && basket.getLinks() != null && basket.getLinks().getPayment() != null && !basket.getLinks().getPayment().isBlank()) {
-                            complete = true;
+                            boolean complete = basket.isComplete();
+                            if (!complete && basket.getLinks() != null && basket.getLinks().getPayment() != null && !basket.getLinks().getPayment().isBlank()) {
+                                complete = true;
+                            }
+
+                            if (complete) {
+                                plugin.setNextCheckQueue(System.currentTimeMillis());
+                                World world = store.getExternalData().getWorld();
+                                world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Payment completed. Checking Tebex queue now...")));
+                                return;
+                            }
+                        } catch (Exception e) {
+                            plugin.debug("Basket payment poll failed for " + basketIdent + ": " + e.getMessage());
                         }
 
-                        if (complete) {
-                            plugin.setNextCheckQueue(System.currentTimeMillis());
-                            World world = store.getExternalData().getWorld();
-                            world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Payment completed. Checking Tebex queue now...")));
+                        try {
+                            Thread.sleep(2000L);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
                             return;
                         }
-                    } catch (Exception e) {
-                        plugin.debug("Basket payment poll failed for " + basketIdent + ": " + e.getMessage());
                     }
 
-                    try {
-                        Thread.sleep(2000L);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
+                    World world = store.getExternalData().getWorld();
+                    world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Payment status is still pending. Normal queue checks will continue.")));
+                } finally {
+                    cartSession.finishPaymentPoll(basketIdent);
                 }
-
-                World world = store.getExternalData().getWorld();
-                world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Payment status is still pending. Normal queue checks will continue.")));
             });
         }
 
@@ -1277,7 +1505,7 @@ public final class BuyGui {
             }
             builder.append("Browse categories to explore packages, pricing, and media before purchase. ");
             if (isCartEnabled()) {
-                builder.append("Add items to your cart, then generate a checkout link in chat when you are ready. ");
+                builder.append("Add items to your cart, then open Checkout to scan a QR code or create a checkout link in chat. ");
             } else {
                 builder.append("Cart is disabled for this store, so Buy Now creates a direct checkout link. ");
             }
@@ -1336,7 +1564,7 @@ public final class BuyGui {
                         .append("  ")
                         .append(formatMoney(entry.subtotal()));
             }
-            builder.append("\n\nUse the controls on each card to adjust quantity or remove an item. Create a checkout link when your basket looks right.");
+            builder.append("\n\nUse the controls on each card to adjust quantity or remove an item. Open Checkout when your basket looks right.");
             return builder.toString();
         }
 
@@ -1819,6 +2047,18 @@ public final class BuyGui {
             return DETAIL_CARD_SLOT + "[0] #SubcommandDescription.TextSpans";
         }
 
+        private static String gridPreviewNameSelector() {
+            return GRID_ROOT + "[0] #SubcommandName.TextSpans";
+        }
+
+        private static String gridPreviewUsageSelector() {
+            return GRID_ROOT + "[0] #SubcommandUsage.TextSpans";
+        }
+
+        private static String gridPreviewDescriptionSelector() {
+            return GRID_ROOT + "[0] #SubcommandDescription.TextSpans";
+        }
+
         private static int clamp(int value, int min, int max) {
             if (value < min) {
                 return min;
@@ -1929,6 +2169,9 @@ public final class BuyGui {
         private String basketIdent = "";
         private double lastKnownTotalPrice = 0d;
         private String checkoutUrl = "";
+        private String checkoutTemplateUiPath = "";
+        private boolean checkoutPreviewLoading = false;
+        private String paymentPollBasketIdent = "";
 
         @Nonnull
         synchronized Map<Integer, Integer> snapshotQuantities() {
@@ -1950,9 +2193,12 @@ public final class BuyGui {
         }
 
         synchronized void replaceQuantities(@Nonnull Map<Integer, Integer> quantities) {
+            boolean changed = !new HashMap<>(packageQuantities).equals(quantities);
             packageQuantities.clear();
             packageQuantities.putAll(quantities);
-            clearCheckoutPreview();
+            if (changed) {
+                clearCheckoutPreview();
+            }
         }
 
         synchronized boolean isEmpty() {
@@ -1986,12 +2232,26 @@ public final class BuyGui {
             return lastKnownTotalPrice;
         }
 
-        synchronized void setCheckoutPreview(@Nullable String checkoutUrl) {
+        synchronized void beginCheckoutPreview() {
+            this.checkoutPreviewLoading = true;
+            this.checkoutUrl = "";
+            this.checkoutTemplateUiPath = "";
+        }
+
+        synchronized void setCheckoutPreview(@Nullable String checkoutUrl, @Nullable String checkoutTemplateUiPath) {
             this.checkoutUrl = checkoutUrl == null ? "" : checkoutUrl;
+            this.checkoutTemplateUiPath = checkoutTemplateUiPath == null ? "" : checkoutTemplateUiPath;
+            this.checkoutPreviewLoading = false;
         }
 
         synchronized void clearCheckoutPreview() {
             this.checkoutUrl = "";
+            this.checkoutTemplateUiPath = "";
+            this.checkoutPreviewLoading = false;
+        }
+
+        synchronized boolean isCheckoutPreviewLoading() {
+            return checkoutPreviewLoading;
         }
 
         synchronized boolean hasCheckoutPreview() {
@@ -2001,6 +2261,30 @@ public final class BuyGui {
         @Nonnull
         synchronized String getCheckoutUrl() {
             return checkoutUrl;
+        }
+
+        @Nonnull
+        synchronized String getCheckoutTemplateUiPath() {
+            return checkoutTemplateUiPath;
+        }
+
+        synchronized boolean beginPaymentPoll(@Nullable String basketIdent) {
+            String normalized = basketIdent == null ? "" : basketIdent;
+            if (normalized.isBlank()) {
+                return false;
+            }
+            if (normalized.equals(paymentPollBasketIdent)) {
+                return false;
+            }
+            paymentPollBasketIdent = normalized;
+            return true;
+        }
+
+        synchronized void finishPaymentPoll(@Nullable String basketIdent) {
+            String normalized = basketIdent == null ? "" : basketIdent;
+            if (normalized.equals(paymentPollBasketIdent)) {
+                paymentPollBasketIdent = "";
+            }
         }
     }
 
