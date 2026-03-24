@@ -54,7 +54,7 @@ Group #Panel {
       }
 
       Label #TotalValue {
-        Anchor: (Width: 110);
+        Anchor: (Width: 92);
         Style: (
           FontSize: 18,
           RenderBold: true,
