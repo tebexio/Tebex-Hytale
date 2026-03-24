@@ -91,8 +91,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private static final String RUNTIME_THUMBNAIL_TEXTURE_PREFIX = "Assets";
     private static final String RUNTIME_CARD_TEMPLATE_PREFIX = "TebexGeneratedStoreCard_";
     private static final String RUNTIME_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedStoreCardWide_";
+    private static final String RUNTIME_PACKAGE_CARD_TEMPLATE_PREFIX = "TebexGeneratedPackageCard_";
+    private static final String RUNTIME_PACKAGE_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedPackageCardWide_";
     private static final String RUNTIME_CART_CARD_TEMPLATE_PREFIX = "TebexGeneratedCartCard_";
     private static final String RUNTIME_CART_CARD_WIDE_TEMPLATE_PREFIX = "TebexGeneratedCartCardWide_";
+    private static final String RUNTIME_SIDEBAR_CART_ROW_TEMPLATE_PREFIX = "TebexGeneratedSidebarCartRow_";
+    private static final String RUNTIME_CHECKOUT_SUMMARY_ROW_TEMPLATE_PREFIX = "TebexGeneratedCheckoutSummaryRow_";
     private static final String RUNTIME_CHECKOUT_TEMPLATE_PREFIX = "TebexGeneratedCheckout_";
     private static final String RUNTIME_CHECKOUT_QR_PREFIX = "checkout-qr-";
     private static final List<String> LEGACY_RUNTIME_CACHE_DIRECTORIES = List.of(
@@ -724,6 +728,21 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private Path runtimeThumbnailPackageCardTemplatePath(@Nonnull String imageFileName, boolean wide) {
+        return runtimePageDirectory().resolve(runtimeThumbnailPackageCardTemplateFileName(imageFileName, wide));
+    }
+
+    @Nonnull
+    private Path runtimeThumbnailSidebarCartRowTemplatePath(@Nonnull String imageFileName) {
+        return runtimePageDirectory().resolve(runtimeThumbnailSidebarCartRowTemplateFileName(imageFileName));
+    }
+
+    @Nonnull
+    private Path runtimeCheckoutSummaryRowTemplatePath(@Nonnull String imageFileName) {
+        return runtimePageDirectory().resolve(runtimeCheckoutSummaryRowTemplateFileName(imageFileName));
+    }
+
+    @Nonnull
     private Path runtimeCheckoutTemplatePath(@Nonnull String assetKey) {
         return runtimePageDirectory().resolve(runtimeCheckoutTemplateFileName(assetKey));
     }
@@ -754,6 +773,36 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    public static String runtimeThumbnailPackageCardTemplateUiPath(@Nonnull String texturePath, boolean wide) {
+        String fileName = texturePath.replace('\\', '/');
+        int lastSlash = fileName.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileName = fileName.substring(lastSlash + 1);
+        }
+        return "Pages/" + runtimeThumbnailPackageCardTemplateFileName(fileName, wide);
+    }
+
+    @Nonnull
+    public static String runtimeThumbnailSidebarCartRowTemplateUiPath(@Nonnull String texturePath) {
+        String fileName = texturePath.replace('\\', '/');
+        int lastSlash = fileName.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileName = fileName.substring(lastSlash + 1);
+        }
+        return "Pages/" + runtimeThumbnailSidebarCartRowTemplateFileName(fileName);
+    }
+
+    @Nonnull
+    public static String runtimeCheckoutSummaryRowTemplateUiPath(@Nonnull String texturePath) {
+        String fileName = texturePath.replace('\\', '/');
+        int lastSlash = fileName.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileName = fileName.substring(lastSlash + 1);
+        }
+        return "Pages/" + runtimeCheckoutSummaryRowTemplateFileName(fileName);
+    }
+
+    @Nonnull
     public static String runtimeCheckoutTemplateUiPath(@Nonnull String assetKey) {
         return "Pages/" + runtimeCheckoutTemplateFileName(assetKey);
     }
@@ -775,6 +824,21 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Nonnull
     private static String runtimeThumbnailCartCardTemplateFileName(@Nonnull String imageFileName, boolean wide) {
         return runtimeThumbnailTemplateFileName(imageFileName, wide ? RUNTIME_CART_CARD_WIDE_TEMPLATE_PREFIX : RUNTIME_CART_CARD_TEMPLATE_PREFIX);
+    }
+
+    @Nonnull
+    private static String runtimeThumbnailPackageCardTemplateFileName(@Nonnull String imageFileName, boolean wide) {
+        return runtimeThumbnailTemplateFileName(imageFileName, wide ? RUNTIME_PACKAGE_CARD_WIDE_TEMPLATE_PREFIX : RUNTIME_PACKAGE_CARD_TEMPLATE_PREFIX);
+    }
+
+    @Nonnull
+    private static String runtimeThumbnailSidebarCartRowTemplateFileName(@Nonnull String imageFileName) {
+        return runtimeThumbnailTemplateFileName(imageFileName, RUNTIME_SIDEBAR_CART_ROW_TEMPLATE_PREFIX);
+    }
+
+    @Nonnull
+    private static String runtimeCheckoutSummaryRowTemplateFileName(@Nonnull String imageFileName) {
+        return runtimeThumbnailTemplateFileName(imageFileName, RUNTIME_CHECKOUT_SUMMARY_ROW_TEMPLATE_PREFIX);
     }
 
     @Nonnull
@@ -1148,12 +1212,28 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 buildRuntimeThumbnailCardTemplate(imageFileName, true)
         );
         Files.writeString(
+                runtimeThumbnailPackageCardTemplatePath(imageFileName, false),
+                buildRuntimePackageCardTemplate(imageFileName, false)
+        );
+        Files.writeString(
+                runtimeThumbnailPackageCardTemplatePath(imageFileName, true),
+                buildRuntimePackageCardTemplate(imageFileName, true)
+        );
+        Files.writeString(
                 runtimeThumbnailCartCardTemplatePath(imageFileName, false),
                 buildRuntimeCartThumbnailCardTemplate(imageFileName, false)
         );
         Files.writeString(
                 runtimeThumbnailCartCardTemplatePath(imageFileName, true),
                 buildRuntimeCartThumbnailCardTemplate(imageFileName, true)
+        );
+        Files.writeString(
+                runtimeThumbnailSidebarCartRowTemplatePath(imageFileName),
+                buildRuntimeSidebarCartRowTemplate(imageFileName)
+        );
+        Files.writeString(
+                runtimeCheckoutSummaryRowTemplatePath(imageFileName),
+                buildRuntimeCheckoutSummaryRowTemplate(imageFileName)
         );
     }
 
@@ -1206,8 +1286,8 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     private static String buildRuntimeThumbnailCardTemplate(@Nonnull String imageFileName, boolean wide) {
         String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
         String anchor = wide
-                ? "(Width: 1022, Height: 176, Bottom: 16)"
-                : "(Width: 504, Height: 176, Bottom: 16, Right: 14)";
+                ? "(Width: 996, Height: 176, Bottom: 16)"
+                : "(Width: 490, Height: 176, Bottom: 16, Right: 14)";
 
         return "$C = \"../Common.ui\";\n"
                 + "\n"
@@ -1266,11 +1346,80 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private static String buildRuntimePackageCardTemplate(@Nonnull String imageFileName, boolean wide) {
+        String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
+        String anchor = wide
+                ? "(Width: 996, Height: 216, Bottom: 16)"
+                : "(Width: 490, Height: 216, Bottom: 16, Right: 14)";
+
+        return "$C = \"../Common.ui\";\n"
+                + "\n"
+                + "Group #Card {\n"
+                + "  Anchor: " + anchor + ";\n"
+                + "  LayoutMode: Top;\n"
+                + "\n"
+                + "  Group {\n"
+                + "    Anchor: (Height: 166, Bottom: 10);\n"
+                + "    Padding: (Full: 14);\n"
+                + "    LayoutMode: Left;\n"
+                + "    Background: #10253a(0.96);\n"
+                + "\n"
+                + "    Group #PackageThumbnailFrame {\n"
+                + "      Anchor: (Width: 92, Height: 92, Right: 14);\n"
+                + "      Background: #08111b(0.88);\n"
+                + "      Padding: (Full: 3);\n"
+                + "\n"
+                + "      Group #PackageThumbnail {\n"
+                + "        Anchor: (Full: 0);\n"
+                + "        Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "      }\n"
+                + "    }\n"
+                + "\n"
+                + "    Group {\n"
+                + "      LayoutMode: Top;\n"
+                + "      FlexWeight: 1;\n"
+                + "\n"
+                + "      Label #SubcommandName {\n"
+                + "        Style: (\n"
+                + "          FontSize: 22,\n"
+                + "          RenderBold: true,\n"
+                + "          TextColor: $C.@ColorDefault\n"
+                + "        );\n"
+                + "        Anchor: (Bottom: 8);\n"
+                + "      }\n"
+                + "\n"
+                + "      Label #SubcommandUsage {\n"
+                + "        Style: (\n"
+                + "          FontSize: 15,\n"
+                + "          TextColor: $C.@ColorBlueAccent,\n"
+                + "          RenderBold: true\n"
+                + "        );\n"
+                + "        Anchor: (Bottom: 8);\n"
+                + "      }\n"
+                + "\n"
+                + "      Label #SubcommandDescription {\n"
+                + "        Style: (\n"
+                + "          FontSize: 14,\n"
+                + "          TextColor: $C.@ColorDefaultLabel,\n"
+                + "          Wrap: true\n"
+                + "        );\n"
+                + "      }\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  $C.@TextButton #AddButton {\n"
+                + "    @Anchor = (Height: 40);\n"
+                + "    @Text = \"Add To Cart\";\n"
+                + "  }\n"
+                + "}\n";
+    }
+
+    @Nonnull
     private static String buildRuntimeCartThumbnailCardTemplate(@Nonnull String imageFileName, boolean wide) {
         String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
         String anchor = wide
-                ? "(Width: 1022, Height: 228, Bottom: 16)"
-                : "(Width: 504, Height: 228, Bottom: 16, Right: 14)";
+                ? "(Width: 996, Height: 228, Bottom: 16)"
+                : "(Width: 490, Height: 228, Bottom: 16, Right: 14)";
 
         return "$C = \"../Common.ui\";\n"
                 + "\n"
@@ -1368,56 +1517,182 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     @Nonnull
+    private static String buildRuntimeSidebarCartRowTemplate(@Nonnull String imageFileName) {
+        String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
+        return "$C = \"../Common.ui\";\n"
+                + "\n"
+                + "Group #Row {\n"
+                + "  Anchor: (Height: 56, Bottom: 10);\n"
+                + "  LayoutMode: Left;\n"
+                + "  Padding: (Full: 10);\n"
+                + "  Background: #08111b(0.82);\n"
+                + "\n"
+                + "  Group #PackageThumbnailFrame {\n"
+                + "    Anchor: (Width: 32, Height: 32, Right: 10);\n"
+                + "    Background: #173753(0.92);\n"
+                + "    Padding: (Full: 2);\n"
+                + "\n"
+                + "    Group #PackageThumbnail {\n"
+                + "      Anchor: (Full: 0);\n"
+                + "      Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #PackageName {\n"
+                + "    FlexWeight: 1;\n"
+                + "    Style: (\n"
+                + "      FontSize: 14,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorDefault\n"
+                + "    );\n"
+                + "    Text: \"Package\";\n"
+                + "  }\n"
+                + "\n"
+                + "  $C.@SecondaryTextButton #DecrementButton {\n"
+                + "    @Anchor = (Width: 34, Height: 34, Right: 6);\n"
+                + "    @Text = \"-\";\n"
+                + "  }\n"
+                + "\n"
+                + "  Group #QuantityBadge {\n"
+                + "    Anchor: (Width: 40, Height: 34, Right: 6);\n"
+                + "    LayoutMode: Center;\n"
+                + "    Background: #111b28(0.95);\n"
+                + "\n"
+                + "    Label #QuantityLabel {\n"
+                + "      Anchor: (Full: 0);\n"
+                + "      Style: (\n"
+                + "        FontSize: 14,\n"
+                + "        RenderBold: true,\n"
+                + "        TextColor: $C.@ColorDefault,\n"
+                + "        HorizontalAlignment: Center\n"
+                + "      );\n"
+                + "      Text: \"1\";\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  $C.@SecondaryTextButton #IncrementButton {\n"
+                + "    @Anchor = (Width: 34, Height: 34, Right: 8);\n"
+                + "    @Text = \"+\";\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #PriceLabel {\n"
+                + "    Anchor: (Width: 72);\n"
+                + "    Style: (\n"
+                + "      FontSize: 15,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorGoldHighlight\n"
+                + "    );\n"
+                + "    Text: \"$0.00\";\n"
+                + "  }\n"
+                + "}\n";
+    }
+
+    @Nonnull
+    private static String buildRuntimeCheckoutSummaryRowTemplate(@Nonnull String imageFileName) {
+        String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
+        return "$C = \"../Common.ui\";\n"
+                + "\n"
+                + "Group #Row {\n"
+                + "  Anchor: (Height: 64, Bottom: 12);\n"
+                + "  LayoutMode: Left;\n"
+                + "  Padding: (Full: 14);\n"
+                + "  Background: #08111b(0.82);\n"
+                + "\n"
+                + "  Group #PackageThumbnailFrame {\n"
+                + "    Anchor: (Width: 28, Height: 28, Right: 12);\n"
+                + "    Background: #173753(0.92);\n"
+                + "    Padding: (Full: 2);\n"
+                + "\n"
+                + "    Group #PackageThumbnail {\n"
+                + "      Anchor: (Full: 0);\n"
+                + "      Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "    }\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #PackageName {\n"
+                + "    FlexWeight: 1;\n"
+                + "    Style: (\n"
+                + "      FontSize: 16,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorDefault\n"
+                + "    );\n"
+                + "    Text: \"Package\";\n"
+                + "  }\n"
+                + "\n"
+                + "  Label #PriceLabel {\n"
+                + "    Anchor: (Width: 90);\n"
+                + "    Style: (\n"
+                + "      FontSize: 16,\n"
+                + "      RenderBold: true,\n"
+                + "      TextColor: $C.@ColorGoldHighlight\n"
+                + "    );\n"
+                + "    Text: \"$0.00\";\n"
+                + "  }\n"
+                + "}\n";
+    }
+
+    @Nonnull
     private static String buildRuntimeCheckoutPreviewTemplate(@Nonnull String imageFileName) {
         String texturePath = runtimeThumbnailTexturePath(imageFileName).replace("\\", "/");
         return "$C = \"../Common.ui\";\n"
                 + "\n"
                 + "Group #Card {\n"
-                + "  Anchor: (Width: 940, Height: 560, Bottom: 0);\n"
+                + "  Anchor: (Width: 404, Height: 262, Bottom: 0);\n"
                 + "  LayoutMode: Top;\n"
-                + "  Padding: (Full: 28);\n"
                 + "  Background: #10253a(0.96);\n"
                 + "\n"
-                + "  Label #SubcommandName {\n"
-                + "    Style: (\n"
-                + "      FontSize: 28,\n"
-                + "      RenderBold: true,\n"
-                + "      TextColor: $C.@ColorDefault\n"
-                + "    );\n"
-                + "    Anchor: (Bottom: 10);\n"
-                + "  }\n"
-                + "\n"
-                + "  Label #SubcommandUsage {\n"
-                + "    Style: (\n"
-                + "      FontSize: 17,\n"
-                + "      RenderBold: true,\n"
-                + "      TextColor: $C.@ColorGoldHighlight\n"
-                + "    );\n"
-                + "    Anchor: (Bottom: 20);\n"
-                + "  }\n"
-                + "\n"
                 + "  Group {\n"
-                + "    Anchor: (Width: 884, Height: 392, Bottom: 18);\n"
+                + "    Anchor: (Height: 44, Bottom: 14);\n"
                 + "    LayoutMode: Center;\n"
+                + "    Background: #314867(0.88);\n"
                 + "\n"
-                + "    Group #CheckoutQrFrame {\n"
-                + "      Anchor: (Width: 380, Height: 380);\n"
-                + "      Background: #f4f7fb;\n"
-                + "      Padding: (Full: 8);\n"
-                + "\n"
-                + "      Group #CheckoutQrImage {\n"
-                + "        Anchor: (Full: 0);\n"
-                + "        Background: (TexturePath: \"" + texturePath + "\");\n"
-                + "      }\n"
+                + "    Label #SubcommandName {\n"
+                + "      Style: (\n"
+                + "        ...$C.@TitleStyle,\n"
+                + "        FontSize: 18,\n"
+                + "        TextColor: $C.@ColorDefault,\n"
+                + "        HorizontalAlignment: Center,\n"
+                + "        RenderBold: true\n"
+                + "      );\n"
                 + "    }\n"
                 + "  }\n"
                 + "\n"
-                + "  Label #SubcommandDescription {\n"
-                + "    Style: (\n"
-                + "      FontSize: 16,\n"
-                + "      TextColor: $C.@ColorDefaultLabel,\n"
-                + "      Wrap: true\n"
-                + "    );\n"
+                + "  Group {\n"
+                + "    LayoutMode: Top;\n"
+                + "    Padding: (Left: 20, Top: 8, Right: 20, Bottom: 20);\n"
+                + "\n"
+                + "    Label #SubcommandUsage {\n"
+                + "      Style: (\n"
+                + "        FontSize: 15,\n"
+                + "        TextColor: $C.@ColorDefaultLabel,\n"
+                + "        Wrap: true\n"
+                + "      );\n"
+                + "      Anchor: (Bottom: 12);\n"
+                + "    }\n"
+                + "\n"
+                + "    Group {\n"
+                + "      Anchor: (Width: 364, Height: 148, Bottom: 0);\n"
+                + "      LayoutMode: Center;\n"
+                + "\n"
+                + "      Group #CheckoutQrFrame {\n"
+                + "        Anchor: (Width: 148, Height: 148);\n"
+                + "        Background: #f4f7fb;\n"
+                + "        Padding: (Full: 8);\n"
+                + "\n"
+                + "        Group #CheckoutQrImage {\n"
+                + "          Anchor: (Full: 0);\n"
+                + "          Background: (TexturePath: \"" + texturePath + "\");\n"
+                + "        }\n"
+                + "      }\n"
+                + "    }\n"
+                + "\n"
+                + "    Label #SubcommandDescription {\n"
+                + "      Style: (\n"
+                + "        FontSize: 14,\n"
+                + "        TextColor: $C.@ColorDefaultLabel,\n"
+                + "        Wrap: true\n"
+                + "      );\n"
+                + "    }\n"
                 + "  }\n"
                 + "}\n";
     }
@@ -1561,8 +1836,12 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return normalized.endsWith(".ui")
                 && (normalized.startsWith(RUNTIME_CARD_TEMPLATE_PREFIX)
                 || normalized.startsWith(RUNTIME_CARD_WIDE_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_PACKAGE_CARD_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_PACKAGE_CARD_WIDE_TEMPLATE_PREFIX)
                 || normalized.startsWith(RUNTIME_CART_CARD_TEMPLATE_PREFIX)
                 || normalized.startsWith(RUNTIME_CART_CARD_WIDE_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_SIDEBAR_CART_ROW_TEMPLATE_PREFIX)
+                || normalized.startsWith(RUNTIME_CHECKOUT_SUMMARY_ROW_TEMPLATE_PREFIX)
                 || normalized.startsWith(RUNTIME_CHECKOUT_TEMPLATE_PREFIX));
     }
 
@@ -2157,6 +2436,14 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         return "Tebex Store";
     }
 
+    @Nonnull
+    public String getStoreDescription() {
+        if (headlessWebstore != null && headlessWebstore.getDescription() != null && !headlessWebstore.getDescription().isBlank()) {
+            return headlessWebstore.getDescription();
+        }
+        return "";
+    }
+
     private void handleOfflineCommands() {
         debug("retrieving offline commands...");
         OfflineCommandsResponse offlineCommands = null;
@@ -2668,3 +2955,4 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
         }
     }
 }
+

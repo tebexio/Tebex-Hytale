@@ -1,7 +1,7 @@
 $C = "../Common.ui";
 
 Group #Card {
-  Anchor: (Width: 1022, Height: 228, Bottom: 16);
+  Anchor: (Width: 996, Height: 228, Bottom: 16);
   LayoutMode: Top;
 
   Group {
@@ -85,3 +85,4 @@ Group #Card {
     }
   }
 }
+

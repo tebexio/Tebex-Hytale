@@ -1,0 +1,66 @@
+$C = "../Common.ui";
+
+Group #Row {
+  Anchor: (Height: 56, Bottom: 10);
+  LayoutMode: Left;
+  Padding: (Full: 10);
+  Background: #08111b(0.82);
+
+  Group #PackageThumbnailFrame {
+    Anchor: (Width: 32, Height: 32, Right: 10);
+    Background: #173753(0.92);
+    Padding: (Full: 2);
+
+    Group #PackageThumbnail {
+      Anchor: (Full: 0);
+      Background: #2a3b59(0.76);
+    }
+  }
+
+  Label #PackageName {
+    FlexWeight: 1;
+    Style: (
+      FontSize: 14,
+      RenderBold: true,
+      TextColor: $C.@ColorDefault
+    );
+    Text: "Package";
+  }
+
+  $C.@SecondaryTextButton #DecrementButton {
+    @Anchor = (Width: 34, Height: 34, Right: 6);
+    @Text = "-";
+  }
+
+  Group #QuantityBadge {
+    Anchor: (Width: 40, Height: 34, Right: 6);
+    LayoutMode: Center;
+    Background: #111b28(0.95);
+
+    Label #QuantityLabel {
+      Anchor: (Full: 0);
+      Style: (
+        FontSize: 14,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault,
+        HorizontalAlignment: Center
+      );
+      Text: "1";
+    }
+  }
+
+  $C.@SecondaryTextButton #IncrementButton {
+    @Anchor = (Width: 34, Height: 34, Right: 8);
+    @Text = "+";
+  }
+
+  Label #PriceLabel {
+    Anchor: (Width: 72);
+    Style: (
+      FontSize: 15,
+      RenderBold: true,
+      TextColor: $C.@ColorGoldHighlight
+    );
+    Text: "$0.00";
+  }
+}

@@ -137,9 +137,12 @@ public final class BuyGui {
         private static final String PAGE_TITLE_SLOT = "#PageTitleSlot";
         private static final String HEADER_TITLE_SLOT = "#HeaderTitleSlot";
         private static final String HEADER_SUBTITLE_SLOT = "#HeaderSubtitleSlot";
+        private static final String SECTION_TITLE_SLOT = "#SectionTitleSlot";
         private static final String FOOTER_LEFT_SLOT = "#FooterLeftButtonSlot";
         private static final String FOOTER_RIGHT_SLOT = "#FooterRightButtonSlot";
+        private static final String FOOTER_CENTER_SLOT = "#FooterCenterButtonSlot";
         private static final String DETAIL_CARD_SLOT = "#DetailCardSlot";
+        private static final String DETAIL_SECONDARY_CARD_SLOT = "#DetailSecondaryCardSlot";
         private static final String DETAIL_PRIMARY_SLOT = "#DetailPrimaryButtonSlot";
         private static final String DETAIL_SECONDARY_SLOT = "#DetailSecondaryButtonSlot";
         private static final String CARD_ROW_TEMPLATE = "Pages/TebexStoreCardRow.ui";
@@ -147,15 +150,26 @@ public final class BuyGui {
         private static final String CARD_TEMPLATE_WIDE = "Pages/TebexStoreCardWide.ui";
         private static final String CARD_ICON_TEMPLATE = "Pages/TebexStoreCardIcon.ui";
         private static final String CARD_ICON_TEMPLATE_WIDE = "Pages/TebexStoreCardIconWide.ui";
+        private static final String PACKAGE_CARD_TEMPLATE = "Pages/TebexPackageCard.ui";
+        private static final String PACKAGE_CARD_TEMPLATE_WIDE = "Pages/TebexPackageCardWide.ui";
+        private static final String PACKAGE_CARD_ICON_TEMPLATE = "Pages/TebexPackageCardIcon.ui";
+        private static final String PACKAGE_CARD_ICON_TEMPLATE_WIDE = "Pages/TebexPackageCardIconWide.ui";
         private static final String CART_CARD_TEMPLATE = "Pages/TebexCartCard.ui";
         private static final String CART_CARD_TEMPLATE_WIDE = "Pages/TebexCartCardWide.ui";
         private static final String CART_CARD_ICON_TEMPLATE = "Pages/TebexCartCardIcon.ui";
         private static final String CART_CARD_ICON_TEMPLATE_WIDE = "Pages/TebexCartCardIconWide.ui";
+        private static final String SIDEBAR_CART_TEMPLATE = "Pages/TebexSidebarCartPanel.ui";
+        private static final String SIDEBAR_CART_ROW_TEMPLATE = "Pages/TebexSidebarCartRow.ui";
+        private static final String SIDEBAR_CART_ROW_ICON_TEMPLATE = "Pages/TebexSidebarCartRowIcon.ui";
+        private static final String CHECKOUT_SUMMARY_PANEL_TEMPLATE = "Pages/TebexCheckoutSummaryPanel.ui";
+        private static final String CHECKOUT_SUMMARY_ROW_TEMPLATE = "Pages/TebexCheckoutSummaryRow.ui";
+        private static final String CHECKOUT_SUMMARY_ROW_ICON_TEMPLATE = "Pages/TebexCheckoutSummaryRowIcon.ui";
         private static final String DETAIL_CARD_TEMPLATE = "Pages/TebexDetailCard.ui";
         private static final String DETAIL_CARD_CHECKOUT_TEMPLATE = "Pages/TebexDetailCardCheckout.ui";
         private static final String PAGE_TITLE_TEMPLATE = "Pages/TebexPageTitle.ui";
         private static final String TITLE_TEMPLATE = "Pages/TebexTitleLine.ui";
         private static final String SUBTITLE_TEMPLATE = "Pages/TebexSubtitleLine.ui";
+        private static final String SECTION_TITLE_TEMPLATE = "Pages/TebexSectionTitle.ui";
         private static final String PRIMARY_BUTTON_TEMPLATE = "Pages/TebexPrimaryButton.ui";
         private static final String SECONDARY_BUTTON_TEMPLATE = "Pages/TebexSecondaryButton.ui";
         private static final String PAGE_THUMBNAIL_PREFIX = "Assets/";
@@ -215,13 +229,17 @@ public final class BuyGui {
             commands.clear(PAGE_TITLE_SLOT);
             commands.clear(HEADER_TITLE_SLOT);
             commands.clear(HEADER_SUBTITLE_SLOT);
+            commands.clear(SECTION_TITLE_SLOT);
             commands.clear(FOOTER_LEFT_SLOT);
             commands.clear(FOOTER_RIGHT_SLOT);
+            commands.clear(FOOTER_CENTER_SLOT);
             commands.clear(DETAIL_CARD_SLOT);
+            commands.clear(DETAIL_SECONDARY_CARD_SLOT);
             commands.clear(DETAIL_PRIMARY_SLOT);
             commands.clear(DETAIL_SECONDARY_SLOT);
 
             appendPageTitle(commands);
+            appendStoreHeader(commands);
 
             List<CardEntry> cards = new ArrayList<>();
             FooterConfig footer = switch (mode) {
@@ -230,11 +248,7 @@ public final class BuyGui {
                 case CART -> buildCartCards(commands, cards);
             };
 
-            if (shouldRenderCheckoutPreviewCanvas()) {
-                renderCheckoutPreviewCanvas(commands);
-            } else {
-                renderCards(commands, events, cards);
-            }
+            renderCards(commands, events, cards);
             renderFooter(commands, events, footer);
             renderDetails(commands, events);
         }
@@ -244,8 +258,7 @@ public final class BuyGui {
             int totalPages = Math.max(1, (categories.size() + PAGE_SIZE - 1) / PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
 
-            appendStaticText(commands, HEADER_TITLE_SLOT, "Categories", true);
-            appendStaticText(commands, HEADER_SUBTITLE_SLOT, "Browse the available store categories.", false);
+            appendSectionTitle(commands, "Categories");
 
             int from = page * PAGE_SIZE;
             int to = Math.min(categories.size(), from + PAGE_SIZE);
@@ -270,18 +283,14 @@ public final class BuyGui {
             ButtonEntry left;
             ButtonEntry right;
             if (totalPages <= 1) {
-                left = isCartEnabled() && !cartSession.isEmpty()
-                        ? new ButtonEntry(ACTION_OPEN_CART, "", "View Cart (" + cartSession.getTotalItems() + ")")
-                        : null;
-                right = new ButtonEntry(ACTION_CLOSE, "", "Close");
+                left = null;
+                right = null;
             } else if (page <= 0) {
-                left = isCartEnabled() && !cartSession.isEmpty()
-                        ? new ButtonEntry(ACTION_OPEN_CART, "", "View Cart (" + cartSession.getTotalItems() + ")")
-                        : new ButtonEntry(ACTION_CLOSE, "", "Close");
+                left = null;
                 right = new ButtonEntry(ACTION_NEXT, "", "Next");
             } else if (page >= totalPages - 1) {
                 left = new ButtonEntry(ACTION_PREV, "", "Previous");
-                right = new ButtonEntry(ACTION_CLOSE, "", "Close");
+                right = null;
             } else {
                 left = new ButtonEntry(ACTION_PREV, "", "Previous");
                 right = new ButtonEntry(ACTION_NEXT, "", "Next");
@@ -300,12 +309,7 @@ public final class BuyGui {
             int totalPages = Math.max(1, (packages.size() + PAGE_SIZE - 1) / PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
 
-            appendStaticText(commands, HEADER_TITLE_SLOT, selectedCategory.getName(), true);
-            String subtitle = "Select a package to view details.";
-            if (isCartEnabled()) {
-                subtitle = subtitle + " Cart: " + cartSession.getTotalItems() + " item" + (cartSession.getTotalItems() == 1 ? "" : "s") + ".";
-            }
-            appendStaticText(commands, HEADER_SUBTITLE_SLOT, subtitle, false);
+            appendSectionTitle(commands, selectedCategory.getName());
 
             int from = page * PAGE_SIZE;
             int to = Math.min(packages.size(), from + PAGE_SIZE);
@@ -313,7 +317,7 @@ public final class BuyGui {
                 CategoryPackage pack = packages.get(i);
                 debugPackageDescriptionFields("grid", pack);
                 cards.add(CardEntry.button(
-                        ACTION_SELECT_PACKAGE,
+                        isCartEnabled() ? ACTION_ADD_TO_CART : ACTION_BUY_NOW,
                         Integer.toString(pack.getId()),
                         pack.getName(),
                         buildPackagePriceMessage(pack),
@@ -332,7 +336,7 @@ public final class BuyGui {
                     : new ButtonEntry(ACTION_BACK, "", "Back");
             ButtonEntry right = page < totalPages - 1
                     ? new ButtonEntry(ACTION_NEXT, "", "Next")
-                    : new ButtonEntry(ACTION_CLOSE, "", "Close");
+                    : null;
             return new FooterConfig(left, right);
         }
 
@@ -348,19 +352,29 @@ public final class BuyGui {
             commands.set(PAGE_TITLE_SLOT + "[0].TextSpans", uiText(title, "Tebex Store"));
         }
 
-        private FooterConfig buildCartCards(@Nonnull UICommandBuilder commands, @Nonnull List<CardEntry> cards) {
-            if (shouldRenderCheckoutPreviewCanvas()) {
-                appendStaticText(commands, HEADER_TITLE_SLOT, "Checkout", true);
-                appendStaticText(commands, HEADER_SUBTITLE_SLOT, "Scan the QR code with your phone, or create the Tebex checkout link in chat.", false);
-                return new FooterConfig(new ButtonEntry(ACTION_BACK, "", "Continue Shopping"), null);
+        private void appendStoreHeader(@Nonnull UICommandBuilder commands) {
+            TebexPlugin plugin = TebexPlugin.get();
+            String storeName = sanitizeUiText(plugin.getStoreName());
+            String storeDescription = sanitizeUiText(plugin.getStoreDescription());
+            if (storeDescription.isBlank()) {
+                String storeUrl = sanitizeUiText(plugin.getStoreUrl());
+                storeDescription = storeUrl.isBlank() ? "Browse categories, packages, pricing, and checkout directly in-game." : storeUrl;
             }
+            appendStaticText(commands, HEADER_TITLE_SLOT, storeName.isBlank() ? "Tebex Store" : storeName, true);
+            appendStaticText(commands, HEADER_SUBTITLE_SLOT, storeDescription, false);
+        }
+
+        private void appendSectionTitle(@Nonnull UICommandBuilder commands, @Nonnull String title) {
+            commands.append(SECTION_TITLE_SLOT, SECTION_TITLE_TEMPLATE);
+            commands.set(SECTION_TITLE_SLOT + "[0].TextSpans", uiText(title, "Section"));
+        }
+
+        private FooterConfig buildCartCards(@Nonnull UICommandBuilder commands, @Nonnull List<CardEntry> cards) {
+            appendSectionTitle(commands, cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview() ? "Checkout" : "Cart");
 
             List<CartEntry> entries = getCartEntries();
             int totalPages = Math.max(1, (entries.size() + CART_PAGE_SIZE - 1) / CART_PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
-
-            appendStaticText(commands, HEADER_TITLE_SLOT, "Cart", true);
-            appendStaticText(commands, HEADER_SUBTITLE_SLOT, buildCartSubtitle(entries), false);
 
             int from = page * CART_PAGE_SIZE;
             int to = Math.min(entries.size(), from + CART_PAGE_SIZE);
@@ -387,18 +401,12 @@ public final class BuyGui {
             ButtonEntry right;
             if (page < totalPages - 1) {
                 right = new ButtonEntry(ACTION_NEXT, "", "Next");
-            } else if (entries.isEmpty()) {
-                right = new ButtonEntry(ACTION_CLOSE, "", "Close");
-            } else if (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview()) {
+            } else if (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview() || entries.isEmpty()) {
                 right = null;
             } else {
-                right = new ButtonEntry(ACTION_CHECKOUT_CART, "", "Checkout");
+                right = new ButtonEntry(ACTION_CHECKOUT_CART, "", "Proceed To Checkout");
             }
             return new FooterConfig(left, right);
-        }
-
-        private boolean shouldRenderCheckoutPreviewCanvas() {
-            return mode == Mode.CART && (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview());
         }
 
         private void renderCards(
@@ -407,7 +415,16 @@ public final class BuyGui {
                 @Nonnull List<CardEntry> cards
         ) {
             if (mode == Mode.CART) {
+                if (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview()) {
+                    renderCheckoutSummary(commands);
+                    return;
+                }
                 renderCartCards(commands, events, cards);
+                return;
+            }
+
+            if (mode == Mode.PACKAGES) {
+                renderPackageCards(commands, events, cards);
                 return;
             }
 
@@ -443,6 +460,44 @@ public final class BuyGui {
                     events.addEventBinding(
                             CustomUIEventBindingType.Activating,
                             cardSelector(rowIndex, colIndex),
+                            EventData.of(TebexStoreEventData.KEY_ACTION, card.action)
+                                    .append(TebexStoreEventData.KEY_VALUE, card.value)
+                    );
+                }
+            }
+        }
+
+        private void renderPackageCards(
+                @Nonnull UICommandBuilder commands,
+                @Nonnull UIEventBuilder events,
+                @Nonnull List<CardEntry> cards
+        ) {
+            boolean singleColumn = cards.size() <= 1;
+            int cardsPerRow = singleColumn ? 1 : CARDS_PER_ROW;
+            String actionLabel = isCartEnabled() ? "Add To Cart" : "Buy Now";
+            for (int i = 0; i < cards.size(); i++) {
+                int rowIndex = i / cardsPerRow;
+                int colIndex = i % cardsPerRow;
+                if (colIndex == 0) {
+                    commands.append(GRID_ROOT, CARD_ROW_TEMPLATE);
+                }
+
+                CardEntry card = cards.get(i);
+                String template = resolvePackageCardTemplate(singleColumn, card.thumbnailTexturePath, card.itemId);
+                commands.append(gridRowSelector(rowIndex), template);
+                commands.set(cardNameSelector(rowIndex, colIndex), uiText(card.title, "Item"));
+                commands.set(cardUsageSelector(rowIndex, colIndex), card.usage);
+                commands.set(cardDescriptionSelector(rowIndex, colIndex), uiText(card.description, ""));
+                commands.set(cardActionButtonTextSelector(rowIndex, colIndex), uiText(actionLabel, actionLabel));
+                if (isPackageIconTemplate(template) && card.itemId != null && !card.itemId.isBlank()) {
+                    commands.set(cardItemIdSelector(rowIndex, colIndex), card.itemId);
+                    commands.set(cardItemQuantitySelector(rowIndex, colIndex), 1);
+                }
+
+                if (card.interactive) {
+                    events.addEventBinding(
+                            CustomUIEventBindingType.Activating,
+                            cardActionButtonSelector(rowIndex, colIndex),
                             EventData.of(TebexStoreEventData.KEY_ACTION, card.action)
                                     .append(TebexStoreEventData.KEY_VALUE, card.value)
                     );
@@ -510,6 +565,28 @@ public final class BuyGui {
             }
         }
 
+        private void renderCheckoutSummary(@Nonnull UICommandBuilder commands) {
+            List<CartEntry> entries = getCartEntries();
+            commands.append(GRID_ROOT, CHECKOUT_SUMMARY_PANEL_TEMPLATE);
+            commands.set(checkoutSummaryTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
+
+            for (int i = 0; i < entries.size(); i++) {
+                CartEntry entry = entries.get(i);
+                String template = resolveCheckoutSummaryRowTemplate(entry.pack());
+                commands.append(checkoutSummaryItemsSelector(), template);
+                commands.set(checkoutSummaryRowNameSelector(i), uiText(buildCheckoutSummaryName(entry), "Package"));
+                commands.set(checkoutSummaryRowPriceSelector(i), uiText(formatMoney(entry.subtotal()), "$0.00"));
+
+                if (isCheckoutSummaryIconTemplate(template)) {
+                    String itemId = resolvePackageItemId(entry.pack());
+                    if (itemId != null && !itemId.isBlank()) {
+                        commands.set(checkoutSummaryRowItemIdSelector(i), itemId);
+                        commands.set(checkoutSummaryRowItemQuantitySelector(i), 1);
+                    }
+                }
+            }
+        }
+
         private void renderFooter(
                 @Nonnull UICommandBuilder commands,
                 @Nonnull UIEventBuilder events,
@@ -521,115 +598,40 @@ public final class BuyGui {
             if (footer.right != null) {
                 appendButton(commands, events, FOOTER_RIGHT_SLOT, footer.right, false);
             }
+            appendButton(commands, events, FOOTER_CENTER_SLOT, new ButtonEntry(ACTION_CLOSE, "", "Cancel"), false);
         }
 
         private void renderDetails(@Nonnull UICommandBuilder commands, @Nonnull UIEventBuilder events) {
-            if (mode == Mode.CATEGORIES) {
-                setDetailCard(
-                        commands,
-                        "Store Overview",
-                        uiText(buildStoreOverviewUsage(), ""),
-                        buildStoreOverviewDescription()
-                );
-                if (isCartEnabled() && !cartSession.isEmpty()) {
-                    appendButton(
-                            commands,
-                            events,
-                            DETAIL_SECONDARY_SLOT,
-                            new ButtonEntry(ACTION_OPEN_CART, "", "View Cart (" + cartSession.getTotalItems() + ")"),
-                            false
-                    );
-                }
-                return;
-            }
-
             if (mode == Mode.CART) {
                 renderCartDetails(commands, events);
                 return;
             }
 
-            if (selectedCategory == null) {
-                mode = Mode.CATEGORIES;
-                page = 0;
-                setDetailCard(
-                        commands,
-                        "Store Overview",
-                        uiText(buildStoreOverviewUsage(), ""),
-                        buildStoreOverviewDescription()
-                );
-                return;
-            }
-
-            CategoryPackage selectedPack = findPackage(selectedPackageId);
-            if (selectedPack == null) {
-                setDetailCard(
-                        commands,
-                        "Select a package",
-                        uiText(selectedCategory.getName(), ""),
-                        "Click any package card to load detailed information before purchase."
-                );
-                if (isCartEnabled()) {
-                    appendButton(
-                            commands,
-                            events,
-                            DETAIL_SECONDARY_SLOT,
-                            new ButtonEntry(ACTION_OPEN_CART, "", "View Cart (" + cartSession.getTotalItems() + ")"),
-                            false
-                    );
-                }
-                return;
-            }
-
-            debugPackageDescriptionFields("detail", selectedPack);
-            setDetailCard(
-                    commands,
-                    selectedPack.getName(),
-                    buildPackagePriceMessage(selectedPack),
-                    buildPackageDetailDescription(selectedPack)
-            );
-
-            if (isCartEnabled()) {
-                appendButton(
-                        commands,
-                        events,
-                        DETAIL_PRIMARY_SLOT,
-                        new ButtonEntry(ACTION_ADD_TO_CART, Integer.toString(selectedPack.getId()), "Add To Cart"),
-                        true
-                );
-                appendButton(
-                        commands,
-                        events,
-                        DETAIL_SECONDARY_SLOT,
-                        new ButtonEntry(ACTION_OPEN_CART, "", "View Cart (" + cartSession.getTotalItems() + ")"),
-                        false
-                );
-            } else {
-                appendButton(
-                        commands,
-                        events,
-                        DETAIL_PRIMARY_SLOT,
-                        new ButtonEntry(ACTION_BUY_NOW, Integer.toString(selectedPack.getId()), "Buy Now"),
-                        true
-                );
-            }
+            renderStoreSidebar(commands, events);
         }
 
-        private void renderCheckoutPreviewCanvas(@Nonnull UICommandBuilder commands) {
-            if (cartSession.hasCheckoutPreview()) {
-                String templatePath = cartSession.getCheckoutTemplateUiPath();
-                if (templatePath != null && !templatePath.isBlank() && hasUiPageAsset(templatePath)) {
-                    commands.append(GRID_ROOT, templatePath);
-                    commands.set(gridPreviewNameSelector(), uiText("Scan To Checkout", "Scan To Checkout"));
-                    commands.set(gridPreviewUsageSelector(), uiText("Use your phone camera to open the Tebex checkout.", ""));
-                    commands.set(gridPreviewDescriptionSelector(), uiText("If your phone does not pick it up immediately, hold still for a moment or use Refresh to regenerate the QR.", ""));
-                    return;
-                }
+        private void renderStoreSidebar(@Nonnull UICommandBuilder commands, @Nonnull UIEventBuilder events) {
+            if (!isCartEnabled()) {
+                setDetailCard(
+                        commands,
+                        "Store",
+                        uiText("Cart disabled", ""),
+                        "This store is using Buy Now. Selecting a package creates a checkout link immediately."
+                );
+                return;
             }
 
-            commands.append(GRID_ROOT, DETAIL_CARD_TEMPLATE);
-            commands.set(gridPreviewNameSelector(), uiText("Preparing Checkout", "Preparing Checkout"));
-            commands.set(gridPreviewUsageSelector(), uiText("Generating QR preview", ""));
-            commands.set(gridPreviewDescriptionSelector(), uiText("Please wait while the Tebex checkout QR is generated and registered in the asset pack.", ""));
+            List<CartEntry> entries = getCartEntries();
+            renderSidebarCartPanel(commands, events, entries);
+            if (!entries.isEmpty()) {
+                appendButton(
+                        commands,
+                        events,
+                        DETAIL_PRIMARY_SLOT,
+                        new ButtonEntry(ACTION_CHECKOUT_CART, "", "Proceed To Checkout"),
+                        true
+                );
+            }
         }
 
         private void renderCartDetails(@Nonnull UICommandBuilder commands, @Nonnull UIEventBuilder events) {
@@ -697,11 +699,13 @@ public final class BuyGui {
         ) {
             String templatePath = cartSession.getCheckoutTemplateUiPath();
             if (templatePath != null && !templatePath.isBlank() && hasUiPageAsset(templatePath)) {
-                setCheckoutDetailCard(
+                setCardWithTemplate(
                         commands,
-                        "Checkout",
-                        buildCartSidebarUsage(entries),
-                        "Scan the large QR preview on the left with your phone, or create the Tebex checkout link in chat."
+                        DETAIL_CARD_SLOT,
+                        templatePath,
+                        "QR Code",
+                        uiText("Scan the QR code below to proceed to payment.", ""),
+                        ""
                 );
             } else {
                 setCheckoutDetailCard(
@@ -711,6 +715,15 @@ public final class BuyGui {
                         "The Tebex checkout QR is being loaded from the runtime asset pack. Press Refresh if it does not appear."
                 );
             }
+
+            setCardWithTemplate(
+                    commands,
+                    DETAIL_SECONDARY_CARD_SLOT,
+                    DETAIL_CARD_CHECKOUT_TEMPLATE,
+                    "Checkout Link",
+                    uiText("Create a checkout link in chat.", ""),
+                    ""
+            );
 
             appendButton(
                     commands,
@@ -734,7 +747,7 @@ public final class BuyGui {
                 @Nonnull Message usage,
                 @Nonnull String description
         ) {
-            setDetailCardWithTemplate(commands, DETAIL_CARD_TEMPLATE, title, usage, description);
+            setCardWithTemplate(commands, DETAIL_CARD_SLOT, DETAIL_CARD_TEMPLATE, title, usage, description);
         }
 
         private void setCheckoutDetailCard(
@@ -743,20 +756,21 @@ public final class BuyGui {
                 @Nonnull Message usage,
                 @Nonnull String description
         ) {
-            setDetailCardWithTemplate(commands, DETAIL_CARD_CHECKOUT_TEMPLATE, title, usage, description);
+            setCardWithTemplate(commands, DETAIL_CARD_SLOT, DETAIL_CARD_CHECKOUT_TEMPLATE, title, usage, description);
         }
 
-        private void setDetailCardWithTemplate(
+        private void setCardWithTemplate(
                 @Nonnull UICommandBuilder commands,
+                @Nonnull String slotSelector,
                 @Nonnull String templatePath,
                 @Nonnull String title,
                 @Nonnull Message usage,
                 @Nonnull String description
         ) {
-            commands.append(DETAIL_CARD_SLOT, templatePath);
-            commands.set(detailCardNameSelector(), uiText(title, "Details"));
-            commands.set(detailCardUsageSelector(), usage);
-            commands.set(detailCardDescriptionSelector(), uiText(description, ""));
+            commands.append(slotSelector, templatePath);
+            commands.set(detailCardNameSelector(slotSelector), uiText(title, "Details"));
+            commands.set(detailCardUsageSelector(slotSelector), usage);
+            commands.set(detailCardDescriptionSelector(slotSelector), uiText(description, ""));
         }
 
         private void appendStaticText(
@@ -899,6 +913,8 @@ public final class BuyGui {
                         sendPlayerMessage(ref, store, Message.raw("Your cart is empty."));
                         return;
                     }
+                    mode = Mode.CART;
+                    page = 0;
                     cartSession.beginCheckoutPreview();
                     rebuild();
                     prepareCheckoutPreviewAsync(ref, store);
@@ -1023,7 +1039,7 @@ public final class BuyGui {
                 return;
             }
             if (delta < 0 && entry.quantity() <= 1) {
-                sendPlayerMessage(ref, store, Message.raw("Quantity is already 1. Use Remove to delete the item."));
+                removeFromCartAsync(ref, store, packageId);
                 return;
             }
 
@@ -1579,6 +1595,59 @@ public final class BuyGui {
             return builder.toString();
         }
 
+        private void renderSidebarCartPanel(
+                @Nonnull UICommandBuilder commands,
+                @Nonnull UIEventBuilder events,
+                @Nonnull List<CartEntry> entries
+        ) {
+            commands.append(DETAIL_CARD_SLOT, SIDEBAR_CART_TEMPLATE);
+            commands.set(sidebarCartTitleSelector(), uiText("Cart", "Cart"));
+            commands.set(sidebarCartTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
+            commands.set(
+                    sidebarCartEmptySelector(),
+                    uiText(entries.isEmpty() ? "Your cart is empty" : "", "")
+            );
+
+            for (int i = 0; i < entries.size(); i++) {
+                CartEntry entry = entries.get(i);
+                String template = resolveSidebarCartRowTemplate(entry.pack());
+                commands.append(sidebarCartItemsSelector(), template);
+                commands.set(sidebarCartRowNameSelector(i), uiText(sanitizeUiText(entry.pack().getName()), "Package"));
+                commands.set(sidebarCartRowQuantitySelector(i), uiText(Integer.toString(entry.quantity()), "1"));
+                commands.set(sidebarCartRowPriceSelector(i), uiText(formatMoney(entry.subtotal()), "$0.00"));
+
+                if (isSidebarCartIconTemplate(template)) {
+                    String itemId = resolvePackageItemId(entry.pack());
+                    if (itemId != null && !itemId.isBlank()) {
+                        commands.set(sidebarCartRowItemIdSelector(i), itemId);
+                        commands.set(sidebarCartRowItemQuantitySelector(i), 1);
+                    }
+                }
+
+                events.addEventBinding(
+                        CustomUIEventBindingType.Activating,
+                        sidebarCartRowDecrementSelector(i),
+                        EventData.of(TebexStoreEventData.KEY_ACTION, ACTION_DECREMENT_CART_ITEM)
+                                .append(TebexStoreEventData.KEY_VALUE, Integer.toString(entry.pack().getId()))
+                );
+                events.addEventBinding(
+                        CustomUIEventBindingType.Activating,
+                        sidebarCartRowIncrementSelector(i),
+                        EventData.of(TebexStoreEventData.KEY_ACTION, ACTION_INCREMENT_CART_ITEM)
+                                .append(TebexStoreEventData.KEY_VALUE, Integer.toString(entry.pack().getId()))
+                );
+            }
+        }
+
+        @Nonnull
+        private static String buildCheckoutSummaryName(@Nonnull CartEntry entry) {
+            String name = sanitizeUiText(entry.pack().getName());
+            if (entry.quantity() > 1) {
+                return name + " x" + entry.quantity();
+            }
+            return name;
+        }
+
         @Nonnull
         private static String buildPackageDetailDescription(@Nonnull CategoryPackage pack) {
             return resolvePackageDescription(pack);
@@ -1658,6 +1727,18 @@ public final class BuyGui {
         }
 
         @Nonnull
+        private static String resolvePackageCardTemplate(boolean singleColumn, @Nullable String texturePath, @Nullable String itemId) {
+            String generatedTemplate = resolveGeneratedPackageCardTemplate(singleColumn, texturePath);
+            if (generatedTemplate != null) {
+                return generatedTemplate;
+            }
+            if (normalizeItemReference(itemId) != null) {
+                return singleColumn ? PACKAGE_CARD_ICON_TEMPLATE_WIDE : PACKAGE_CARD_ICON_TEMPLATE;
+            }
+            return singleColumn ? PACKAGE_CARD_TEMPLATE_WIDE : PACKAGE_CARD_TEMPLATE;
+        }
+
+        @Nonnull
         private static String resolveCartCardTemplate(boolean singleColumn, @Nullable String texturePath, @Nullable String itemId) {
             String generatedTemplate = resolveGeneratedCartCardTemplate(singleColumn, texturePath);
             if (generatedTemplate != null) {
@@ -1669,12 +1750,50 @@ public final class BuyGui {
             return singleColumn ? CART_CARD_TEMPLATE_WIDE : CART_CARD_TEMPLATE;
         }
 
+        @Nonnull
+        private static String resolveSidebarCartRowTemplate(@Nonnull CategoryPackage pack) {
+            String texturePath = resolveCardThumbnailTexture(pack);
+            String generatedTemplate = resolveGeneratedSidebarCartRowTemplate(texturePath);
+            if (generatedTemplate != null) {
+                return generatedTemplate;
+            }
+            if (normalizeItemReference(resolvePackageItemId(pack)) != null) {
+                return SIDEBAR_CART_ROW_ICON_TEMPLATE;
+            }
+            return SIDEBAR_CART_ROW_TEMPLATE;
+        }
+
+        @Nonnull
+        private static String resolveCheckoutSummaryRowTemplate(@Nonnull CategoryPackage pack) {
+            String texturePath = resolveCardThumbnailTexture(pack);
+            String generatedTemplate = resolveGeneratedCheckoutSummaryRowTemplate(texturePath);
+            if (generatedTemplate != null) {
+                return generatedTemplate;
+            }
+            if (normalizeItemReference(resolvePackageItemId(pack)) != null) {
+                return CHECKOUT_SUMMARY_ROW_ICON_TEMPLATE;
+            }
+            return CHECKOUT_SUMMARY_ROW_TEMPLATE;
+        }
+
         private static boolean isIconTemplate(@Nullable String templatePath) {
             return CARD_ICON_TEMPLATE.equals(templatePath) || CARD_ICON_TEMPLATE_WIDE.equals(templatePath);
         }
 
+        private static boolean isPackageIconTemplate(@Nullable String templatePath) {
+            return PACKAGE_CARD_ICON_TEMPLATE.equals(templatePath) || PACKAGE_CARD_ICON_TEMPLATE_WIDE.equals(templatePath);
+        }
+
         private static boolean isCartIconTemplate(@Nullable String templatePath) {
             return CART_CARD_ICON_TEMPLATE.equals(templatePath) || CART_CARD_ICON_TEMPLATE_WIDE.equals(templatePath);
+        }
+
+        private static boolean isSidebarCartIconTemplate(@Nullable String templatePath) {
+            return SIDEBAR_CART_ROW_ICON_TEMPLATE.equals(templatePath);
+        }
+
+        private static boolean isCheckoutSummaryIconTemplate(@Nullable String templatePath) {
+            return CHECKOUT_SUMMARY_ROW_ICON_TEMPLATE.equals(templatePath);
         }
 
         @Nullable
@@ -1691,12 +1810,51 @@ public final class BuyGui {
         }
 
         @Nullable
+        private static String resolveGeneratedPackageCardTemplate(boolean singleColumn, @Nullable String texturePath) {
+            if (!isRenderableUiTexturePath(texturePath)) {
+                return null;
+            }
+
+            String templatePath = TebexPlugin.runtimeThumbnailPackageCardTemplateUiPath(texturePath, singleColumn);
+            if (hasUiPageAsset(templatePath)) {
+                return templatePath;
+            }
+            return null;
+        }
+
+        @Nullable
         private static String resolveGeneratedCartCardTemplate(boolean singleColumn, @Nullable String texturePath) {
             if (!isRenderableUiTexturePath(texturePath)) {
                 return null;
             }
 
             String templatePath = TebexPlugin.runtimeThumbnailCartCardTemplateUiPath(texturePath, singleColumn);
+            if (hasUiPageAsset(templatePath)) {
+                return templatePath;
+            }
+            return null;
+        }
+
+        @Nullable
+        private static String resolveGeneratedSidebarCartRowTemplate(@Nullable String texturePath) {
+            if (!isRenderableUiTexturePath(texturePath)) {
+                return null;
+            }
+
+            String templatePath = TebexPlugin.runtimeThumbnailSidebarCartRowTemplateUiPath(texturePath);
+            if (hasUiPageAsset(templatePath)) {
+                return templatePath;
+            }
+            return null;
+        }
+
+        @Nullable
+        private static String resolveGeneratedCheckoutSummaryRowTemplate(@Nullable String texturePath) {
+            if (!isRenderableUiTexturePath(texturePath)) {
+                return null;
+            }
+
+            String templatePath = TebexPlugin.runtimeCheckoutSummaryRowTemplateUiPath(texturePath);
             if (hasUiPageAsset(templatePath)) {
                 return templatePath;
             }
@@ -2010,6 +2168,14 @@ public final class BuyGui {
             return cardSelector(rowIndex, colIndex) + " #SubcommandDescription.TextSpans";
         }
 
+        private static String cardActionButtonSelector(int rowIndex, int colIndex) {
+            return cardSelector(rowIndex, colIndex) + " #AddButton";
+        }
+
+        private static String cardActionButtonTextSelector(int rowIndex, int colIndex) {
+            return cardSelector(rowIndex, colIndex) + " #AddButton.TextSpans";
+        }
+
         private static String cardItemIdSelector(int rowIndex, int colIndex) {
             return cardSelector(rowIndex, colIndex) + " #ItemIcon.ItemId";
         }
@@ -2046,28 +2212,100 @@ public final class BuyGui {
             return slotSelector + "[0].TextSpans";
         }
 
-        private static String detailCardNameSelector() {
-            return DETAIL_CARD_SLOT + "[0] #SubcommandName.TextSpans";
+        private static String detailCardNameSelector(@Nonnull String slotSelector) {
+            return slotSelector + "[0] #SubcommandName.TextSpans";
         }
 
-        private static String detailCardUsageSelector() {
-            return DETAIL_CARD_SLOT + "[0] #SubcommandUsage.TextSpans";
+        private static String detailCardUsageSelector(@Nonnull String slotSelector) {
+            return slotSelector + "[0] #SubcommandUsage.TextSpans";
         }
 
-        private static String detailCardDescriptionSelector() {
-            return DETAIL_CARD_SLOT + "[0] #SubcommandDescription.TextSpans";
+        private static String detailCardDescriptionSelector(@Nonnull String slotSelector) {
+            return slotSelector + "[0] #SubcommandDescription.TextSpans";
         }
 
-        private static String gridPreviewNameSelector() {
-            return GRID_ROOT + "[0] #SubcommandName.TextSpans";
+        private static String sidebarCartPanelSelector() {
+            return DETAIL_CARD_SLOT + "[0]";
         }
 
-        private static String gridPreviewUsageSelector() {
-            return GRID_ROOT + "[0] #SubcommandUsage.TextSpans";
+        private static String sidebarCartTitleSelector() {
+            return sidebarCartPanelSelector() + " #PanelTitle.TextSpans";
         }
 
-        private static String gridPreviewDescriptionSelector() {
-            return GRID_ROOT + "[0] #SubcommandDescription.TextSpans";
+        private static String sidebarCartEmptySelector() {
+            return sidebarCartPanelSelector() + " #EmptyState.TextSpans";
+        }
+
+        private static String sidebarCartItemsSelector() {
+            return sidebarCartPanelSelector() + " #ItemsSlot";
+        }
+
+        private static String sidebarCartTotalSelector() {
+            return sidebarCartPanelSelector() + " #TotalValue.TextSpans";
+        }
+
+        private static String sidebarCartRowSelector(int rowIndex) {
+            return sidebarCartItemsSelector() + "[" + rowIndex + "]";
+        }
+
+        private static String sidebarCartRowNameSelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #PackageName.TextSpans";
+        }
+
+        private static String sidebarCartRowPriceSelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #PriceLabel.TextSpans";
+        }
+
+        private static String sidebarCartRowQuantitySelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #QuantityLabel.TextSpans";
+        }
+
+        private static String sidebarCartRowDecrementSelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #DecrementButton";
+        }
+
+        private static String sidebarCartRowIncrementSelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #IncrementButton";
+        }
+
+        private static String sidebarCartRowItemIdSelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #ItemIcon.ItemId";
+        }
+
+        private static String sidebarCartRowItemQuantitySelector(int rowIndex) {
+            return sidebarCartRowSelector(rowIndex) + " #ItemIcon.Quantity";
+        }
+
+        private static String checkoutSummaryPanelSelector() {
+            return GRID_ROOT + "[0]";
+        }
+
+        private static String checkoutSummaryItemsSelector() {
+            return checkoutSummaryPanelSelector() + " #ItemsSlot";
+        }
+
+        private static String checkoutSummaryTotalSelector() {
+            return checkoutSummaryPanelSelector() + " #TotalValue.TextSpans";
+        }
+
+        private static String checkoutSummaryRowSelector(int rowIndex) {
+            return checkoutSummaryItemsSelector() + "[" + rowIndex + "]";
+        }
+
+        private static String checkoutSummaryRowNameSelector(int rowIndex) {
+            return checkoutSummaryRowSelector(rowIndex) + " #PackageName.TextSpans";
+        }
+
+        private static String checkoutSummaryRowPriceSelector(int rowIndex) {
+            return checkoutSummaryRowSelector(rowIndex) + " #PriceLabel.TextSpans";
+        }
+
+        private static String checkoutSummaryRowItemIdSelector(int rowIndex) {
+            return checkoutSummaryRowSelector(rowIndex) + " #ItemIcon.ItemId";
+        }
+
+        private static String checkoutSummaryRowItemQuantitySelector(int rowIndex) {
+            return checkoutSummaryRowSelector(rowIndex) + " #ItemIcon.Quantity";
         }
 
         private static int clamp(int value, int min, int max) {
@@ -2123,6 +2361,19 @@ public final class BuyGui {
                 }
             }
             return symbol + String.format(Locale.US, "%.2f", amount);
+        }
+
+        private double resolveCartTotal(@Nonnull List<CartEntry> entries) {
+            double total = cartSession.getLastKnownTotalPrice();
+            if (total > 0d) {
+                return total;
+            }
+
+            double subtotal = 0d;
+            for (CartEntry entry : entries) {
+                subtotal += entry.subtotal();
+            }
+            return subtotal;
         }
 
         @Nonnull

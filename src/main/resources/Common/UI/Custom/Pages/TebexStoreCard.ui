@@ -1,7 +1,7 @@
 $C = "../Common.ui";
 
 Button #Card {
-  Anchor: (Width: 504, Height: 176, Bottom: 16, Right: 14);
+  Anchor: (Width: 490, Height: 176, Bottom: 16, Right: 14);
   Padding: (Full: 14);
   LayoutMode: Top;
   Background: #10253a(0.96);
@@ -36,3 +36,4 @@ Button #Card {
     );
   }
 }
+

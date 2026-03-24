@@ -1,0 +1,39 @@
+$C = "../Common.ui";
+
+Group #Row {
+  Anchor: (Height: 64, Bottom: 12);
+  LayoutMode: Left;
+  Padding: (Full: 14);
+  Background: #08111b(0.82);
+
+  Group #PackageThumbnailFrame {
+    Anchor: (Width: 28, Height: 28, Right: 12);
+    Background: #173753(0.92);
+    Padding: (Full: 2);
+
+    Group #PackageThumbnail {
+      Anchor: (Full: 0);
+      Background: #2a3b59(0.76);
+    }
+  }
+
+  Label #PackageName {
+    FlexWeight: 1;
+    Style: (
+      FontSize: 16,
+      RenderBold: true,
+      TextColor: $C.@ColorDefault
+    );
+    Text: "Package";
+  }
+
+  Label #PriceLabel {
+    Anchor: (Width: 90);
+    Style: (
+      FontSize: 16,
+      RenderBold: true,
+      TextColor: $C.@ColorGoldHighlight
+    );
+    Text: "$0.00";
+  }
+}

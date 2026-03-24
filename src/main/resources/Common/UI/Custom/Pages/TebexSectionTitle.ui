@@ -1,0 +1,12 @@
+$C = "../Common.ui";
+
+Label #Line {
+  Style: (
+    ...$C.@TitleStyle,
+    FontSize: 18,
+    TextColor: $C.@ColorDefault,
+    HorizontalAlignment: Center,
+    RenderBold: true
+  );
+  Text: "Section";
+}
