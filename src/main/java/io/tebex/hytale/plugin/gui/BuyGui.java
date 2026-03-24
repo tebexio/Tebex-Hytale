@@ -720,8 +720,8 @@ public final class BuyGui {
                     commands,
                     DETAIL_SECONDARY_CARD_SLOT,
                     DETAIL_CARD_CHECKOUT_TEMPLATE,
-                    "Checkout Link",
-                    uiText("Create a checkout link in chat.", ""),
+                    "Can't scan the QR?",
+                    uiText("If you're having issues scanning the QR code, click the checkout link button below and a Checkout link will be sent to your chat.", ""),
                     ""
             );
 
