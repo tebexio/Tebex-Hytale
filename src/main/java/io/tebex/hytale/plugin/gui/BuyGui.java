@@ -1211,7 +1211,13 @@ public final class BuyGui {
             TebexPlugin plugin = TebexPlugin.get();
             CompletableFuture.runAsync(() -> {
                 try {
-                    Basket basket = plugin.getHeadlessApi().createBasket(playerRef.getUsername(), null, null, false);
+                    Basket basket = plugin.getHeadlessApi().createBasket(
+                            playerRef.getUsername(),
+                            null,
+                            null,
+                            false,
+                            plugin.resolvePlayerIpv4(playerRef)
+                    );
                     if (basket.getIdent() == null || basket.getIdent().isBlank()) {
                         throw new IOException("Headless basket did not return a basket identifier.");
                     }
@@ -1341,7 +1347,13 @@ public final class BuyGui {
                 return basketIdent;
             }
 
-            Basket basket = plugin.getHeadlessApi().createBasket(playerRef.getUsername(), null, null, false);
+            Basket basket = plugin.getHeadlessApi().createBasket(
+                    playerRef.getUsername(),
+                    null,
+                    null,
+                    false,
+                    plugin.resolvePlayerIpv4(playerRef)
+            );
             if (basket.getIdent() == null || basket.getIdent().isBlank()) {
                 throw new IOException("Headless basket did not return a basket identifier.");
             }

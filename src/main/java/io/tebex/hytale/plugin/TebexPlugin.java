@@ -52,8 +52,12 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.SocketAddress;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -130,6 +134,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     @Getter private CopyOnWriteArrayList<StoreSaleInfo> storeSalesCache = new CopyOnWriteArrayList<>();
     @Getter private final ConcurrentHashMap<Integer, String> categoryThumbnailTextureCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, String> completedCommands = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, String> playerIpv4Cache = new ConcurrentHashMap<>();
     private boolean warnedMissingHeadlessToken = false;
     private boolean warnedHeadlessAccountMismatch = false;
     private boolean loggedInformationPayload = false;
@@ -303,17 +308,108 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
     private void registerEvents() {
         this.getEventRegistry().register(PlayerConnectEvent.class, connection -> {
+            PlayerRef playerRef = connection.getPlayerRef();
+            String ipAddress = fallbackAnalyticsIpv4(resolvePlayerIpv4(playerRef));
+            playerIpv4Cache.put(playerRef.getUuid().toString(), ipAddress);
             this.serverEvents.add(new ServerEvent(
-                    connection.getPlayerRef().getUuid().toString(),
-                    connection.getPlayerRef().getUsername(),
-                    "127.0.0.1", ServerEvent.EnumServerEventType.JOIN)); //TODO player ip
+                    playerRef.getUuid().toString(),
+                    playerRef.getUsername(),
+                    ipAddress, ServerEvent.EnumServerEventType.JOIN));
         });
         this.getEventRegistry().register(PlayerDisconnectEvent.class, connection -> {
+            PlayerRef playerRef = connection.getPlayerRef();
+            String cachedIp = playerIpv4Cache.remove(playerRef.getUuid().toString());
+            String ipAddress = fallbackAnalyticsIpv4(cachedIp != null ? cachedIp : resolvePlayerIpv4(playerRef));
             this.serverEvents.add(new ServerEvent(
-                    connection.getPlayerRef().getUuid().toString(),
-                    connection.getPlayerRef().getUsername(),
-                    "127.0.0.1", ServerEvent.EnumServerEventType.LEAVE)); //TODO player ip
+                    playerRef.getUuid().toString(),
+                    playerRef.getUsername(),
+                    ipAddress, ServerEvent.EnumServerEventType.LEAVE));
         });
+    }
+
+    @Nullable
+    public String resolvePlayerIpv4(@Nullable PlayerRef playerRef) {
+        if (playerRef == null) {
+            return null;
+        }
+
+        try {
+            var packetHandler = playerRef.getPacketHandler();
+            if (packetHandler == null) {
+                return null;
+            }
+
+            var channel = packetHandler.getChannel();
+            if (channel == null) {
+                return null;
+            }
+
+            String direct = extractIpv4(channel.remoteAddress());
+            if (direct != null) {
+                return direct;
+            }
+
+            var parent = channel.parent();
+            if (parent != null) {
+                return extractIpv4(parent.remoteAddress());
+            }
+        } catch (Exception e) {
+            debug("Failed to resolve player IPv4 for " + playerRef.getUsername() + ": " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    @Nullable
+    private static String extractIpv4(@Nullable SocketAddress address) {
+        if (!(address instanceof InetSocketAddress inetSocketAddress)) {
+            return null;
+        }
+
+        InetAddress inetAddress = inetSocketAddress.getAddress();
+        if (inetAddress instanceof Inet4Address ipv4Address) {
+            return ipv4Address.getHostAddress();
+        }
+
+        if (inetAddress == null) {
+            String host = inetSocketAddress.getHostString();
+            if (isIpv4Literal(host)) {
+                return host;
+            }
+            return null;
+        }
+
+        String hostAddress = inetAddress.getHostAddress();
+        return isIpv4Literal(hostAddress) ? hostAddress : null;
+    }
+
+    private static boolean isIpv4Literal(@Nullable String value) {
+        if (value == null || value.isBlank() || value.indexOf(':') >= 0) {
+            return false;
+        }
+        String[] parts = value.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        for (String part : parts) {
+            if (part.isBlank() || part.length() > 3) {
+                return false;
+            }
+            try {
+                int octet = Integer.parseInt(part);
+                if (octet < 0 || octet > 255) {
+                    return false;
+                }
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Nonnull
+    private static String fallbackAnalyticsIpv4(@Nullable String ipAddress) {
+        return ipAddress == null || ipAddress.isBlank() ? "127.0.0.1" : ipAddress;
     }
     private void handlePlayerEvents() {
         if (tebexServerInfo == null) { // don't send events for non-connected stores

@@ -14,5 +14,7 @@ public class CreateBasketRequest {
     private String username;
     @SerializedName("username_id")
     private Long usernameId;
+    @SerializedName("ip_address")
+    private String ipAddress;
     private Object custom;
 }

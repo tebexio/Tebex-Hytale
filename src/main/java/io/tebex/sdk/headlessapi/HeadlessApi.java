@@ -90,11 +90,24 @@ public class HeadlessApi {
     @Nonnull
     public Basket createBasket(@Nullable String username, @Nullable String completeUrl, @Nullable String cancelUrl, boolean completeAutoRedirect)
             throws IOException, InterruptedException {
+        return createBasket(username, completeUrl, cancelUrl, completeAutoRedirect, null);
+    }
+
+    @Nonnull
+    public Basket createBasket(
+            @Nullable String username,
+            @Nullable String completeUrl,
+            @Nullable String cancelUrl,
+            boolean completeAutoRedirect,
+            @Nullable String ipAddress
+    )
+            throws IOException, InterruptedException {
         CreateBasketRequest payload = new CreateBasketRequest();
         payload.setUsername(username == null ? null : username.trim());
         payload.setCompleteUrl(completeUrl == null ? null : completeUrl.trim());
         payload.setCancelUrl(cancelUrl == null ? null : cancelUrl.trim());
         payload.setCompleteAutoRedirect(completeAutoRedirect);
+        payload.setIpAddress(ipAddress == null || ipAddress.isBlank() ? null : ipAddress.trim());
 
         BasketResponse response = PluginApi.GSON.fromJson(
                 request(Verb.POST, "accounts/" + requireToken() + "/baskets", payload),
