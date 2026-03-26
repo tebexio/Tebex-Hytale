@@ -574,21 +574,27 @@ public final class BuyGui {
 
         private void renderCheckoutSummary(@Nonnull UICommandBuilder commands) {
             List<CartEntry> entries = getCartEntries();
+            int totalPages = Math.max(1, (entries.size() + CART_PAGE_SIZE - 1) / CART_PAGE_SIZE);
+            page = clamp(page, 0, totalPages - 1);
+            int from = page * CART_PAGE_SIZE;
+            int to = Math.min(entries.size(), from + CART_PAGE_SIZE);
+
             commands.append(GRID_ROOT, CHECKOUT_SUMMARY_PANEL_TEMPLATE);
             commands.set(checkoutSummaryTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
 
-            for (int i = 0; i < entries.size(); i++) {
+            for (int i = from; i < to; i++) {
                 CartEntry entry = entries.get(i);
+                int rowIndex = i - from;
                 String template = resolveCheckoutSummaryRowTemplate(entry.pack());
                 commands.append(checkoutSummaryItemsSelector(), template);
-                commands.set(checkoutSummaryRowNameSelector(i), uiText(buildCheckoutSummaryName(entry), "Package"));
-                commands.set(checkoutSummaryRowPriceSelector(i), uiText(formatMoney(entry.subtotal()), "$0.00"));
+                commands.set(checkoutSummaryRowNameSelector(rowIndex), uiText(buildCheckoutSummaryName(entry), "Package"));
+                commands.set(checkoutSummaryRowPriceSelector(rowIndex), uiText(formatMoney(entry.subtotal()), "$0.00"));
 
                 if (isCheckoutSummaryIconTemplate(template)) {
                     String itemId = resolvePackageItemId(entry.pack());
                     if (itemId != null && !itemId.isBlank()) {
-                        commands.set(checkoutSummaryRowItemIdSelector(i), itemId);
-                        commands.set(checkoutSummaryRowItemQuantitySelector(i), 1);
+                        commands.set(checkoutSummaryRowItemIdSelector(rowIndex), itemId);
+                        commands.set(checkoutSummaryRowItemQuantitySelector(rowIndex), 1);
                     }
                 }
             }
@@ -991,7 +997,7 @@ public final class BuyGui {
                     World world = store.getExternalData().getWorld();
                     world.execute(() -> {
                         sendPlayerMessage(ref, store, Message.raw("Added '" + pack.getName() + "' to cart."));
-                        rebuild();
+                        refreshAfterCartMutation();
                     });
                 } catch (Exception e) {
                     if (isBasketAccountMismatchError(e)) {
@@ -1008,7 +1014,7 @@ public final class BuyGui {
                             World world = store.getExternalData().getWorld();
                             world.execute(() -> {
                                 sendPlayerMessage(ref, store, Message.raw("Cart session refreshed. Added '" + pack.getName() + "' to cart."));
-                                rebuild();
+                                refreshAfterCartMutation();
                             });
                             return;
                         } catch (Exception retryException) {
@@ -1079,7 +1085,7 @@ public final class BuyGui {
 
                     syncCartSessionFromBasket(basket);
                     World world = store.getExternalData().getWorld();
-                    world.execute(this::rebuild);
+                    world.execute(this::refreshAfterCartMutation);
                 } catch (Exception e) {
                     plugin.error("Failed to update cart quantity for package " + packageId, e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
@@ -1109,7 +1115,7 @@ public final class BuyGui {
                     World world = store.getExternalData().getWorld();
                     world.execute(() -> {
                         sendPlayerMessage(ref, store, Message.raw("Removed package from cart."));
-                        rebuild();
+                        refreshAfterCartMutation();
                     });
                 } catch (Exception e) {
                     plugin.error("Failed to remove package " + packageId + " from cart", e);
@@ -1146,7 +1152,7 @@ public final class BuyGui {
                     world.execute(() -> {
                         selectedPackageId = -1;
                         sendPlayerMessage(ref, store, Message.raw("Cart cleared."));
-                        rebuild();
+                        refreshAfterCartMutation();
                     });
                 } catch (Exception e) {
                     plugin.error("Failed to clear cart", e);
@@ -1157,6 +1163,49 @@ public final class BuyGui {
                     world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Failed to clear cart: " + message)));
                 }
             });
+        }
+
+        private void refreshAfterCartMutation() {
+            if (mode == Mode.CART) {
+                sendIncrementalCartRefresh();
+                return;
+            }
+            sendIncrementalSidebarRefresh();
+        }
+
+        private void sendIncrementalSidebarRefresh() {
+            UICommandBuilder commands = new UICommandBuilder();
+            UIEventBuilder events = new UIEventBuilder();
+            if (isCartEnabled()) {
+                commands.clear(DETAIL_SECONDARY_CARD_SLOT);
+                commands.clear(DETAIL_PRIMARY_SLOT);
+            } else {
+                commands.clear(DETAIL_CARD_SLOT);
+                commands.clear(DETAIL_PRIMARY_SLOT);
+                commands.clear(DETAIL_SECONDARY_SLOT);
+            }
+            renderDetails(commands, events);
+            sendUpdate(commands, events, false);
+        }
+
+        private void sendIncrementalCartRefresh() {
+            UICommandBuilder commands = new UICommandBuilder();
+            UIEventBuilder events = new UIEventBuilder();
+            commands.clear(GRID_ROOT);
+            commands.clear(FOOTER_RIGHT_SLOT);
+            commands.clear(DETAIL_CARD_SLOT);
+            commands.clear(DETAIL_PRIMARY_SLOT);
+            if (cartSession.isCheckoutPreviewLoading() || cartSession.hasCheckoutPreview()) {
+                commands.clear(DETAIL_SECONDARY_CARD_SLOT);
+                commands.clear(DETAIL_SECONDARY_SLOT);
+            }
+
+            List<CardEntry> cards = new ArrayList<>();
+            FooterConfig footer = buildCartCards(commands, cards);
+            renderCards(commands, events, cards);
+            renderFooter(commands, events, footer);
+            renderDetails(commands, events);
+            sendUpdate(commands, events, false);
         }
 
         private void prepareCheckoutPreviewAsync(
