@@ -138,6 +138,7 @@ public final class BuyGui {
         private static final String HEADER_TITLE_SLOT = "#HeaderTitleSlot";
         private static final String HEADER_SUBTITLE_SLOT = "#HeaderSubtitleSlot";
         private static final String SECTION_TITLE_SLOT = "#SectionTitleSlot";
+        private static final String SECTION_LEFT_SLOT = "#SectionLeftButtonSlot";
         private static final String FOOTER_LEFT_SLOT = "#FooterLeftButtonSlot";
         private static final String FOOTER_RIGHT_SLOT = "#FooterRightButtonSlot";
         private static final String FOOTER_CENTER_SLOT = "#FooterCenterButtonSlot";
@@ -179,7 +180,7 @@ public final class BuyGui {
         private static final int CARDS_PER_ROW = 2;
         private static final int PAGE_SIZE = 6;
         private static final int CART_PAGE_SIZE = 4;
-        private static final long CHECKOUT_PREVIEW_MIN_LOADING_MILLIS = 6500L;
+        private static final long CHECKOUT_PREVIEW_MIN_LOADING_MILLIS = 2000L;
 
         private static final String ACTION_OPEN_CATEGORY = "open_category";
         private static final String ACTION_SELECT_PACKAGE = "select_package";
@@ -230,6 +231,7 @@ public final class BuyGui {
             commands.clear(HEADER_TITLE_SLOT);
             commands.clear(HEADER_SUBTITLE_SLOT);
             commands.clear(SECTION_TITLE_SLOT);
+            commands.clear(SECTION_LEFT_SLOT);
             commands.clear(FOOTER_LEFT_SLOT);
             commands.clear(FOOTER_RIGHT_SLOT);
             commands.clear(FOOTER_CENTER_SLOT);
@@ -269,8 +271,13 @@ public final class BuyGui {
                         ACTION_OPEN_CATEGORY,
                         Integer.toString(category.getId()),
                         category.getName(),
-                        uiText(packageCount + " package" + (packageCount == 1 ? "" : "s"), ""),
-                        category.isOnlySubcategories() ? "Browse subcategories and featured offers." : "Browse packages, pricing, and featured offers.",
+                        uiText(
+                                category.isOnlySubcategories()
+                                        ? "Browse subcategories and featured offers."
+                                        : "Browse packages, pricing, and featured offers.",
+                                ""
+                        ),
+                        packageCount + " package" + (packageCount == 1 ? "" : "s"),
                         resolveCategoryThumbnailTexture(category),
                         resolveCategoryItemId(category)
                 ));
@@ -593,12 +600,22 @@ public final class BuyGui {
                 @Nonnull FooterConfig footer
         ) {
             if (footer.left != null) {
-                appendButton(commands, events, FOOTER_LEFT_SLOT, footer.left, false);
+                appendButton(
+                        commands,
+                        events,
+                        shouldRenderLeftActionInSectionHeader(footer.left) ? SECTION_LEFT_SLOT : FOOTER_LEFT_SLOT,
+                        footer.left,
+                        false
+                );
             }
             if (footer.right != null) {
                 appendButton(commands, events, FOOTER_RIGHT_SLOT, footer.right, false);
             }
             appendButton(commands, events, FOOTER_CENTER_SLOT, new ButtonEntry(ACTION_CLOSE, "", "Cancel"), false);
+        }
+
+        private static boolean shouldRenderLeftActionInSectionHeader(@Nonnull ButtonEntry entry) {
+            return ACTION_BACK.equals(entry.action);
         }
 
         private void renderDetails(@Nonnull UICommandBuilder commands, @Nonnull UIEventBuilder events) {
@@ -720,8 +737,8 @@ public final class BuyGui {
                     commands,
                     DETAIL_SECONDARY_CARD_SLOT,
                     DETAIL_CARD_CHECKOUT_TEMPLATE,
-                    "Can't scan the QR?",
-                    uiText("If you're having issues scanning the QR code, click the checkout link button below and a Checkout link will be sent to your chat.", ""),
+                    "Checkout Link",
+                    uiText("Click the checkout link button below and a checkout link will be sent to your chat.", ""),
                     ""
             );
 
@@ -1600,7 +1617,7 @@ public final class BuyGui {
                 @Nonnull UIEventBuilder events,
                 @Nonnull List<CartEntry> entries
         ) {
-            commands.append(DETAIL_CARD_SLOT, SIDEBAR_CART_TEMPLATE);
+            commands.append(DETAIL_SECONDARY_CARD_SLOT, SIDEBAR_CART_TEMPLATE);
             commands.set(sidebarCartTitleSelector(), uiText("Cart", "Cart"));
             commands.set(sidebarCartTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
             commands.set(
@@ -2225,7 +2242,7 @@ public final class BuyGui {
         }
 
         private static String sidebarCartPanelSelector() {
-            return DETAIL_CARD_SLOT + "[0]";
+            return DETAIL_SECONDARY_CARD_SLOT + "[0]";
         }
 
         private static String sidebarCartTitleSelector() {
@@ -2378,7 +2395,7 @@ public final class BuyGui {
 
         @Nonnull
         private static Message plainPriceMessage(double amount) {
-            return Message.raw(formatMoney(amount)).color("#8fe36c").bold(true);
+            return Message.raw(formatMoney(amount)).color("#f5c458").bold(true);
         }
 
         @Nonnull

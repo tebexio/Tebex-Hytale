@@ -1,6 +1,7 @@
 $C = "../Common.ui";
 
 Group #Card {
+  Anchor: (Width: 404);
   LayoutMode: Top;
   Background: #10253a(0.96);
 

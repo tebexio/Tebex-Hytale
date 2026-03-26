@@ -17,23 +17,32 @@ Group #Row {
     }
   }
 
-  Label #PackageName {
+  Group {
     FlexWeight: 1;
-    Style: (
-      FontSize: 16,
-      RenderBold: true,
-      TextColor: $C.@ColorDefault
-    );
-    Text: "Package";
+    Anchor: (Height: 36, Right: 8);
+    LayoutMode: Center;
+
+    Label #PackageName {
+      Style: (
+        FontSize: 16,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault
+      );
+      Text: "Package";
+    }
   }
 
-  Label #PriceLabel {
-    Anchor: (Width: 90);
-    Style: (
-      FontSize: 16,
-      RenderBold: true,
-      TextColor: $C.@ColorGoldHighlight
-    );
-    Text: "$0.00";
+  Group {
+    Anchor: (Width: 72, Height: 36);
+    LayoutMode: Center;
+
+    Label #PriceLabel {
+      Style: (
+        FontSize: 16,
+        RenderBold: true,
+        TextColor: $C.@ColorGoldHighlight
+      );
+      Text: "$0.00";
+    }
   }
 }

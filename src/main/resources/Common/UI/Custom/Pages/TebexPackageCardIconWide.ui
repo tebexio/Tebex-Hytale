@@ -1,14 +1,14 @@
 $C = "../Common.ui";
 
 Group #Card {
-  Anchor: (Width: 996, Height: 216, Bottom: 16);
+  Anchor: (Width: 996, Height: 224, Bottom: 16);
+  Padding: (Full: 14);
   LayoutMode: Top;
+  Background: #10253a(0.96);
 
   Group {
-    Anchor: (Height: 166, Bottom: 10);
-    Padding: (Full: 14);
+    Anchor: (Height: 140, Bottom: 12);
     LayoutMode: Left;
-    Background: #10253a(0.96);
 
     ItemSlot #ItemIcon {
       Anchor: (Width: 92, Height: 92, Right: 14);
@@ -30,8 +30,8 @@ Group #Card {
 
       Label #SubcommandUsage {
         Style: (
-          FontSize: 15,
-          TextColor: $C.@ColorBlueAccent,
+          FontSize: 18,
+          TextColor: $C.@ColorGoldHighlight,
           RenderBold: true
         );
         Anchor: (Bottom: 8);
@@ -47,7 +47,7 @@ Group #Card {
     }
   }
 
-  $C.@TextButton #AddButton {
+  $C.@SecondaryTextButton #AddButton {
     @Anchor = (Height: 40);
     @Text = "Add To Cart";
   }

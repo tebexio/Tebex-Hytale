@@ -48,18 +48,31 @@ $C.@DecoratedContainer {
 
         Group {
           Anchor: (Height: 48, Bottom: 14);
-          LayoutMode: Center;
           Background: #314867(0.88);
 
-          Group #SectionTitleSlot {
-            Anchor: (Width: 760);
+          Group {
+            Anchor: (Full: 0);
+            LayoutMode: Center;
+
+            Group #SectionTitleSlot {
+              Anchor: (Width: 760);
+            }
+          }
+
+          Group #SectionLeftButtonSlot {
+            Anchor: (Width: 250, Height: 40, Left: 12, Top: 4);
           }
         }
 
+      Group {
+        FlexWeight: 1;
+        LayoutMode: Top;
+        Padding: (Full: 18);
+        Background: #08111b(0.42);
+
         Group {
           FlexWeight: 1;
-          Padding: (Full: 18);
-          Background: #08111b(0.42);
+          LayoutMode: Top;
 
           Group #CategoryGrid {
             LayoutMode: Top;
@@ -79,28 +92,21 @@ $C.@DecoratedContainer {
           }
         }
       }
+    }
 
-      Group {
+    Group {
+      FlexWeight: 1;
+      LayoutMode: Top;
+
+      Group #DetailCardSlot {
+      }
+
+      Group #DetailSecondaryCardSlot {
         FlexWeight: 1;
-        LayoutMode: Top;
+      }
 
-        Group {
-          FlexWeight: 1;
-          LayoutMode: Top;
-          Padding: (Full: 18);
-          Background: #08111b(0.46);
-
-          Group #DetailCardSlot {
-            Anchor: (Bottom: 14);
-          }
-
-          Group #DetailSecondaryCardSlot {
-            FlexWeight: 1;
-          }
-        }
-
-        Group #DetailPrimaryButtonSlot {
-          Anchor: (Top: 14);
+      Group #DetailPrimaryButtonSlot {
+        Anchor: (Top: 14);
         }
 
         Group #DetailSecondaryButtonSlot {
