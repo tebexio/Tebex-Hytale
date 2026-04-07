@@ -173,6 +173,7 @@ public final class BuyGui {
         private static final String SECTION_TITLE_TEMPLATE = "Pages/TebexSectionTitle.ui";
         private static final String PRIMARY_BUTTON_TEMPLATE = "Pages/TebexPrimaryButton.ui";
         private static final String SECONDARY_BUTTON_TEMPLATE = "Pages/TebexSecondaryButton.ui";
+        private static final String BACK_ICON_BUTTON_TEMPLATE = "Pages/TebexBackIconButton.ui";
         private static final String PAGE_THUMBNAIL_PREFIX = "Assets/";
         private static final String UI_THUMBNAIL_PREFIX = "UI/Custom/Pages/Assets/";
         private static final String COMMON_UI_THUMBNAIL_PREFIX = "Common/UI/Custom/Pages/Assets/";
@@ -813,14 +814,30 @@ public final class BuyGui {
                 @Nonnull ButtonEntry button,
                 boolean primary
         ) {
-            commands.append(slotSelector, primary ? PRIMARY_BUTTON_TEMPLATE : SECONDARY_BUTTON_TEMPLATE);
-            commands.set(buttonTextSelector(slotSelector), uiText(button.label, ""));
+            boolean iconBackButton = shouldUseBackIconButton(button);
+            commands.append(slotSelector, resolveButtonTemplate(button, primary, iconBackButton));
+            if (!iconBackButton) {
+                commands.set(buttonTextSelector(slotSelector), uiText(button.label, ""));
+            }
             events.addEventBinding(
                     CustomUIEventBindingType.Activating,
-                    buttonSelector(slotSelector),
+                    iconBackButton ? iconBackButtonSelector(slotSelector) : buttonSelector(slotSelector),
                     EventData.of(TebexStoreEventData.KEY_ACTION, button.action)
                             .append(TebexStoreEventData.KEY_VALUE, button.value)
             );
+        }
+
+        private static boolean shouldUseBackIconButton(@Nonnull ButtonEntry button) {
+            return ACTION_BACK.equals(button.action)
+                    && ("Back".equalsIgnoreCase(button.label) || "Continue Shopping".equalsIgnoreCase(button.label));
+        }
+
+        @Nonnull
+        private static String resolveButtonTemplate(@Nonnull ButtonEntry button, boolean primary, boolean iconBackButton) {
+            if (iconBackButton) {
+                return BACK_ICON_BUTTON_TEMPLATE;
+            }
+            return primary ? PRIMARY_BUTTON_TEMPLATE : SECONDARY_BUTTON_TEMPLATE;
         }
 
         @Override
@@ -2268,6 +2285,10 @@ public final class BuyGui {
 
         private static String buttonSelector(@Nonnull String slotSelector) {
             return slotSelector + "[0]";
+        }
+
+        private static String iconBackButtonSelector(@Nonnull String slotSelector) {
+            return slotSelector + "[0] #Button";
         }
 
         private static String buttonTextSelector(@Nonnull String slotSelector) {
