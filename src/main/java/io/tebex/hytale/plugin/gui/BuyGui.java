@@ -758,7 +758,7 @@ public final class BuyGui {
             appendButton(
                     commands,
                     events,
-                    DETAIL_SECONDARY_SLOT,
+                    checkoutLinkCardButtonSlotSelector(),
                     new ButtonEntry(ACTION_SEND_CHECKOUT_LINK, "", "Create Checkout Link"),
                     true
             );
@@ -2288,6 +2288,10 @@ public final class BuyGui {
 
         private static String detailCardDescriptionSelector(@Nonnull String slotSelector) {
             return slotSelector + "[0] #SubcommandDescription.TextSpans";
+        }
+
+        private static String checkoutLinkCardButtonSlotSelector() {
+            return DETAIL_SECONDARY_CARD_SLOT + "[0] #CardActionButtonSlot";
         }
 
         private static String sidebarCartPanelSelector() {

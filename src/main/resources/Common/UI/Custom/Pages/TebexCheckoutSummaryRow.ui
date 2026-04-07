@@ -21,6 +21,7 @@ Group #Row {
     FlexWeight: 1;
     Anchor: (Height: 36, Right: 8);
     LayoutMode: Center;
+    Padding: (Top: 8);
 
     Label #PackageName {
       Style: (
@@ -35,6 +36,7 @@ Group #Row {
   Group {
     Anchor: (Width: 72, Height: 36);
     LayoutMode: Center;
+    Padding: (Top: 8);
 
     Label #PriceLabel {
       Style: (

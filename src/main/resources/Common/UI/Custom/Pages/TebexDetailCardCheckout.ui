@@ -22,6 +22,7 @@ Group #Card {
   }
 
   Group {
+    FlexWeight: 1;
     LayoutMode: Top;
     Padding: (Left: 20, Top: 4, Right: 20, Bottom: 20);
 
@@ -40,6 +41,14 @@ Group #Card {
         TextColor: $C.@ColorDefaultLabel,
         Wrap: true
       );
+    }
+
+    Group {
+      FlexWeight: 1;
+    }
+
+    Group #CardActionButtonSlot {
+      Anchor: (Top: 18);
     }
   }
 }
