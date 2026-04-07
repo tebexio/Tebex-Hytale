@@ -179,7 +179,8 @@ public final class BuyGui {
         private static final String COMMON_UI_THUMBNAIL_PREFIX = "Common/UI/Custom/Pages/Assets/";
 
         private static final int CARDS_PER_ROW = 2;
-        private static final int PAGE_SIZE = 6;
+        private static final int CATEGORY_PAGE_SIZE = 4;
+        private static final int PACKAGE_PAGE_SIZE = 4;
         private static final int CART_PAGE_SIZE = 4;
         private static final long CHECKOUT_PREVIEW_MIN_LOADING_MILLIS = 2000L;
 
@@ -258,13 +259,13 @@ public final class BuyGui {
 
         private FooterConfig buildCategoryCards(@Nonnull UICommandBuilder commands, @Nonnull List<CardEntry> cards) {
             List<Category> categories = getVisibleCategories();
-            int totalPages = Math.max(1, (categories.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+            int totalPages = Math.max(1, (categories.size() + CATEGORY_PAGE_SIZE - 1) / CATEGORY_PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
 
             appendSectionTitle(commands, "Categories");
 
-            int from = page * PAGE_SIZE;
-            int to = Math.min(categories.size(), from + PAGE_SIZE);
+            int from = page * CATEGORY_PAGE_SIZE;
+            int to = Math.min(categories.size(), from + CATEGORY_PAGE_SIZE);
             for (int i = from; i < to; i++) {
                 Category category = categories.get(i);
                 int packageCount = getCategoryPackages(category).size();
@@ -314,13 +315,13 @@ public final class BuyGui {
             }
 
             List<CategoryPackage> packages = getCategoryPackages(selectedCategory);
-            int totalPages = Math.max(1, (packages.size() + PAGE_SIZE - 1) / PAGE_SIZE);
+            int totalPages = Math.max(1, (packages.size() + PACKAGE_PAGE_SIZE - 1) / PACKAGE_PAGE_SIZE);
             page = clamp(page, 0, totalPages - 1);
 
             appendSectionTitle(commands, selectedCategory.getName());
 
-            int from = page * PAGE_SIZE;
-            int to = Math.min(packages.size(), from + PAGE_SIZE);
+            int from = page * PACKAGE_PAGE_SIZE;
+            int to = Math.min(packages.size(), from + PACKAGE_PAGE_SIZE);
             for (int i = from; i < to; i++) {
                 CategoryPackage pack = packages.get(i);
                 debugPackageDescriptionFields("grid", pack);

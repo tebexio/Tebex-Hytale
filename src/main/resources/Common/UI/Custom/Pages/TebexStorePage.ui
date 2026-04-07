@@ -87,6 +87,10 @@ $C.@DecoratedContainer {
             Anchor: (Width: 250, Right: 12);
           }
 
+          Group {
+            FlexWeight: 1;
+          }
+
           Group #FooterRightButtonSlot {
             Anchor: (Width: 250);
           }
