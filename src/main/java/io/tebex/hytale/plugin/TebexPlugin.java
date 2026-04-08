@@ -2276,10 +2276,10 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
     }
 
     private static double resolvePrice(@Nonnull HeadlessPackage headlessPackage) {
-        if (headlessPackage.getTotalPrice() > 0d) {
-            return headlessPackage.getTotalPrice();
+        if (headlessPackage.getBasePrice() > 0d) {
+            return headlessPackage.getBasePrice();
         }
-        return headlessPackage.getBasePrice();
+        return headlessPackage.getTotalPrice();
     }
 
     @Nullable

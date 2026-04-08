@@ -204,16 +204,18 @@ public class HeadlessApi {
         }
 
         if (payload == null) {
-            plugin.info("[Headless API #" + requestId + "] -> " + verb + " " + maskedUrl);
+            plugin.debug("[Headless API #" + requestId + "] -> " + verb + " " + maskedUrl);
         } else {
-            plugin.info("[Headless API #" + requestId + "] -> " + verb + " " + maskedUrl + " payload=" + payloadJson);
+            plugin.debug("[Headless API #" + requestId + "] -> " + verb + " " + maskedUrl + " payload=" + payloadJson);
         }
         HttpResponse<String> response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-        plugin.info("[Headless API #" + requestId + "] <- " + response.statusCode() + " " + maskedUrl + " response=" + response.body());
+        plugin.debug("[Headless API #" + requestId + "] <- " + response.statusCode() + " " + maskedUrl + " response=" + response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             plugin.warn(
                     "Headless API request failed with response code " + response.statusCode() + " at " + maskedUrl,
-                    "See [Headless API #" + requestId + "] logs above for full request/response payload."
+                    plugin.isDebugModeEnabled()
+                            ? "See [Headless API #" + requestId + "] debug logs above for full request/response payload."
+                            : "Enable Tebex debug mode to log full request/response payloads."
             );
             throw new IOException("Headless API request failed with response code " + response.statusCode() + ": " + response.body());
         }
