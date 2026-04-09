@@ -38,9 +38,13 @@ import java.util.LinkedHashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class BuyGui {
     private static final BuyGui INSTANCE = new BuyGui();
+    private static final Pattern HEADLESS_ERROR_DETAIL_PATTERN = Pattern.compile("\"detail\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Pattern HEADLESS_ERROR_TITLE_PATTERN = Pattern.compile("\"title\"\\s*:\\s*\"([^\"]+)\"");
     private final ConcurrentHashMap<String, CartSession> cartSessions = new ConcurrentHashMap<>();
 
     private BuyGui() {
@@ -1038,11 +1042,14 @@ public final class BuyGui {
                         } catch (Exception retryException) {
                             plugin.error("Failed to add package " + pack.getId() + " to cart after refreshing basket session", retryException);
                             World world = store.getExternalData().getWorld();
-                            world.execute(() -> sendPlayerMessage(
-                                    ref,
-                                    store,
-                                    Message.raw("Cart add failed: Headless token from /information does not match the store connected by SecretKey.")
-                            ));
+                            world.execute(() -> {
+                                sendPlayerMessage(
+                                        ref,
+                                        store,
+                                        Message.raw("Cart add failed: Headless token from /information does not match the store connected by SecretKey.")
+                                );
+                                refreshAfterCartMutation();
+                            });
                             return;
                         }
                     }
@@ -1050,9 +1057,12 @@ public final class BuyGui {
                     plugin.error("Failed to add package " + pack.getId() + " to cart", e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
                             ? e.getClass().getSimpleName()
-                            : e.getMessage();
+                            : extractHeadlessErrorMessage(e);
                     World world = store.getExternalData().getWorld();
-                    world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Failed to add to cart: " + message)));
+                    world.execute(() -> {
+                        sendPlayerMessage(ref, store, Message.raw("Failed to add to cart: " + message));
+                        refreshAfterCartMutation();
+                    });
                 }
             });
         }
@@ -1108,9 +1118,12 @@ public final class BuyGui {
                     plugin.error("Failed to update cart quantity for package " + packageId, e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
                             ? e.getClass().getSimpleName()
-                            : e.getMessage();
+                            : extractHeadlessErrorMessage(e);
                     World world = store.getExternalData().getWorld();
-                    world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Failed to update quantity: " + message)));
+                    world.execute(() -> {
+                        sendPlayerMessage(ref, store, Message.raw("Failed to update quantity: " + message));
+                        refreshAfterCartMutation();
+                    });
                 }
             });
         }
@@ -1139,9 +1152,12 @@ public final class BuyGui {
                     plugin.error("Failed to remove package " + packageId + " from cart", e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
                             ? e.getClass().getSimpleName()
-                            : e.getMessage();
+                            : extractHeadlessErrorMessage(e);
                     World world = store.getExternalData().getWorld();
-                    world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Failed to remove from cart: " + message)));
+                    world.execute(() -> {
+                        sendPlayerMessage(ref, store, Message.raw("Failed to remove from cart: " + message));
+                        refreshAfterCartMutation();
+                    });
                 }
             });
         }
@@ -1176,9 +1192,12 @@ public final class BuyGui {
                     plugin.error("Failed to clear cart", e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
                             ? e.getClass().getSimpleName()
-                            : e.getMessage();
+                            : extractHeadlessErrorMessage(e);
                     World world = store.getExternalData().getWorld();
-                    world.execute(() -> sendPlayerMessage(ref, store, Message.raw("Failed to clear cart: " + message)));
+                    world.execute(() -> {
+                        sendPlayerMessage(ref, store, Message.raw("Failed to clear cart: " + message));
+                        refreshAfterCartMutation();
+                    });
                 }
             });
         }
@@ -2230,6 +2249,45 @@ public final class BuyGui {
                 current = current.getCause();
             }
             return false;
+        }
+
+        @Nonnull
+        private static String extractHeadlessErrorMessage(@Nullable Throwable throwable) {
+            Throwable current = throwable;
+            while (current != null) {
+                String message = current.getMessage();
+                if (message != null && !message.isBlank()) {
+                    String detail = extractHeadlessJsonField(message, HEADLESS_ERROR_DETAIL_PATTERN);
+                    if (!detail.isBlank()) {
+                        return detail;
+                    }
+
+                    String title = extractHeadlessJsonField(message, HEADLESS_ERROR_TITLE_PATTERN);
+                    if (!title.isBlank()) {
+                        return title;
+                    }
+
+                    int payloadStart = message.indexOf('{');
+                    if (payloadStart > 0) {
+                        return message.substring(0, payloadStart).trim();
+                    }
+                    return message.trim();
+                }
+                current = current.getCause();
+            }
+            return "Unknown error";
+        }
+
+        @Nonnull
+        private static String extractHeadlessJsonField(@Nonnull String message, @Nonnull Pattern pattern) {
+            Matcher matcher = pattern.matcher(message);
+            if (!matcher.find()) {
+                return "";
+            }
+            return matcher.group(1)
+                    .replace("\\\"", "\"")
+                    .replace("\\/", "/")
+                    .trim();
         }
 
         private static String gridRowSelector(int rowIndex) {
