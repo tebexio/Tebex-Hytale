@@ -2743,7 +2743,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                         return;
                     }
 
-                    ItemContainer inventory = playerComponent.getInventory().getCombinedEverything();
+                    ItemContainer inventory = playerComponent.getInventory().getCombinedBackpackStorageHotbar();
                     int availableSlots = 0;
                     short totalSlots = inventory.getCapacity();
                     for (short i = 0; i < totalSlots; i++) {
