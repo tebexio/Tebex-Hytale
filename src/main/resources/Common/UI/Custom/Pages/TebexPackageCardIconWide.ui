@@ -1,0 +1,55 @@
+$C = "../Common.ui";
+
+Group #Card {
+  Anchor: (Width: 996, Height: 224, Bottom: 16);
+  Padding: (Full: 14);
+  LayoutMode: Top;
+  Background: #10253a(0.96);
+
+  Group {
+    Anchor: (Height: 140, Bottom: 12);
+    LayoutMode: Left;
+
+    ItemSlot #ItemIcon {
+      Anchor: (Width: 92, Height: 92, Right: 14);
+      ShowQuantity: false;
+    }
+
+    Group {
+      LayoutMode: Top;
+      FlexWeight: 1;
+
+      Label #SubcommandName {
+        Style: (
+          FontSize: 22,
+          RenderBold: true,
+          TextColor: $C.@ColorDefault
+        );
+        Anchor: (Bottom: 8);
+      }
+
+      Label #SubcommandUsage {
+        Style: (
+          FontSize: 18,
+          TextColor: $C.@ColorGoldHighlight,
+          RenderBold: true
+        );
+        Anchor: (Bottom: 8);
+      }
+
+      Label #SubcommandDescription {
+        Style: (
+          FontSize: 14,
+          TextColor: $C.@ColorDefaultLabel,
+          Wrap: true
+        );
+      }
+    }
+  }
+
+  $C.@SecondaryTextButton #AddButton {
+    @Anchor = (Height: 40);
+    @Text = "Add To Cart";
+  }
+}
+

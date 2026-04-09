@@ -1,0 +1,6 @@
+$C = "../Common.ui";
+
+$C.@Title #Line {
+  @Anchor = (Width: 420);
+  @Text = "Store";
+}

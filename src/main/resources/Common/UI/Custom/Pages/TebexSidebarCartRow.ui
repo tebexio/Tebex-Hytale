@@ -1,0 +1,83 @@
+$C = "../Common.ui";
+
+Group #Row {
+  Anchor: (Height: 56, Bottom: 10);
+  LayoutMode: Left;
+  Padding: (Left: 10, Top: 11, Right: 10, Bottom: 11);
+  Background: #08111b(0.82);
+
+  Group {
+    Anchor: (Width: 32, Height: 34, Right: 10);
+    LayoutMode: Center;
+
+    Group #PackageThumbnailFrame {
+      Anchor: (Width: 32, Height: 32);
+      Background: #173753(0.92);
+      Padding: (Full: 2);
+
+      Group #PackageThumbnail {
+        Anchor: (Full: 0);
+        Background: #2a3b59(0.76);
+      }
+    }
+  }
+
+  Group {
+    FlexWeight: 1;
+    Anchor: (Height: 34, Right: 8);
+    LayoutMode: Center;
+    Padding: (Top: 10);
+
+    Label #PackageName {
+      Style: (
+        FontSize: 14,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault
+      );
+      Text: "Package";
+    }
+  }
+
+  $C.@SecondaryTextButton #DecrementButton {
+    @Anchor = (Width: 34, Height: 34, Right: 6);
+    @Text = "-";
+  }
+
+  Group #QuantityBadge {
+    Anchor: (Width: 40, Height: 34, Right: 6);
+    LayoutMode: Center;
+    Padding: (Top: 10);
+    Background: #111b28(0.95);
+
+    Label #QuantityLabel {
+      Anchor: (Full: 0);
+      Style: (
+        FontSize: 14,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault,
+        HorizontalAlignment: Center
+      );
+      Text: "1";
+    }
+  }
+
+  $C.@SecondaryTextButton #IncrementButton {
+    @Anchor = (Width: 34, Height: 34, Right: 8);
+    @Text = "+";
+  }
+
+  Group {
+    Anchor: (Width: 62, Height: 34);
+    LayoutMode: Center;
+    Padding: (Top: 10);
+
+    Label #PriceLabel {
+      Style: (
+        FontSize: 15,
+        RenderBold: true,
+        TextColor: $C.@ColorGoldHighlight
+      );
+      Text: "$0.00";
+    }
+  }
+}

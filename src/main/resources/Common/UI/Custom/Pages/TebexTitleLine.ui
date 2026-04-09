@@ -1,0 +1,13 @@
+$C = "../Common.ui";
+
+Label #Line {
+  Style: (
+    ...$C.@TitleStyle,
+    FontSize: 34,
+    TextColor: $C.@ColorGoldHighlight,
+    HorizontalAlignment: Start,
+    RenderBold: true
+  );
+  MaskTexturePath: $C.@TextHighlightGradientMask;
+  Text: "Title";
+}

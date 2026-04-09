@@ -1,0 +1,55 @@
+$C = "../Common.ui";
+
+Group #Panel {
+  Anchor: (Width: 996, Height: 500, Bottom: 16);
+  LayoutMode: Top;
+  Padding: (Full: 18);
+  Background: #10253a(0.96);
+
+  Group #ItemsSlot {
+    LayoutMode: Top;
+    Anchor: (Bottom: 18);
+  }
+
+  Group {
+    FlexWeight: 1;
+  }
+
+  Group {
+    Anchor: (Height: 1, Top: 8, Bottom: 16);
+    Background: #314867(0.72);
+  }
+
+  Group {
+    LayoutMode: Left;
+    Anchor: (Bottom: 10);
+
+    Label {
+      FlexWeight: 1;
+      Style: (
+        FontSize: 18,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault
+      );
+      Text: "Total";
+    }
+
+    Label #TotalValue {
+      Style: (
+        FontSize: 18,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault
+      );
+      Text: "$0.00";
+    }
+  }
+
+  Label #FooterNote {
+    Style: (
+      FontSize: 14,
+      TextColor: $C.@ColorDefaultLabel,
+      Wrap: true
+    );
+    Text: "Final price may vary at checkout depending on local taxes.";
+  }
+}

@@ -11,6 +11,9 @@ import java.util.List;
 public class Package {
     private final int id;
     private final String name;
+    private final String description;
+    @SerializedName("description_html")
+    private final String descriptionHtml;
     private final String image;
     private final double price;
     @SerializedName("expiry_length")
@@ -36,6 +39,7 @@ public class Package {
     private final boolean createGiftcard;
     @SerializedName("show_util")
     private final boolean showUtil;
+    @SerializedName(value = "gui_item", alternate = {"item_id"})
     private final String itemId;
     private final boolean disabled;
     @SerializedName("disable_quantity")

@@ -28,7 +28,7 @@ public class TebexSecretCommand extends CommandBase {
         plugin.getPluginApi().setSecretKey(secretArg.get(ctx));
         plugin.getConfig().get().setSecretKey(secretArg.get(ctx));
         plugin.getConfig().save();
-        plugin.refreshServerInfo();
+        plugin.refreshServerInfo(true);
 
         // make sure the secret key worked by checking if the server is non-null
         var info = plugin.getTebexServerInfo();
@@ -47,6 +47,9 @@ public class TebexSecretCommand extends CommandBase {
 
         // the server was successfully authed and info has been set
         ctx.sendMessage(Message.raw("Successfully connected to " + info.getAccount().getName() + " as " + info.getServer().getName()));
+        ctx.sendMessage(Message.raw("If you are using Tebex thumbnails, restart the server once so the thumbnail asset pack is registered and images can appear in the UI."));
+        plugin.info("Tebex store registration succeeded via /tebex secret for " + info.getAccount().getName() + " as " + info.getServer().getName() + ".");
+        plugin.info("If you are using Tebex thumbnails, restart the server once so the thumbnail asset pack is registered and images can appear in the UI.");
         plugin.getConfig().save();
         plugin.setupTasks();
     }

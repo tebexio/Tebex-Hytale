@@ -1,0 +1,49 @@
+$C = "../Common.ui";
+
+Button #Card {
+  Anchor: (Width: 996, Height: 176, Bottom: 16);
+  Padding: (Full: 14);
+  LayoutMode: Left;
+  Background: #10253a(0.96);
+  Style: (
+    Hovered: (Background: #173753(0.98)),
+    Pressed: (Background: #1f4567(0.98))
+  );
+
+  ItemSlot #ItemIcon {
+    Anchor: (Width: 92, Height: 92, Right: 14);
+    ShowQuantity: false;
+  }
+
+  Group {
+    LayoutMode: Top;
+    FlexWeight: 1;
+
+    Label #SubcommandName {
+      Style: (
+        FontSize: 22,
+        RenderBold: true,
+        TextColor: $C.@ColorDefault
+      );
+      Anchor: (Bottom: 8);
+    }
+
+    Label #SubcommandUsage {
+      Style: (
+        FontSize: 15,
+        TextColor: $C.@ColorDefaultLabel,
+        Wrap: true
+      );
+      Anchor: (Bottom: 8);
+    }
+
+    Label #SubcommandDescription {
+      Style: (
+        FontSize: 15,
+        TextColor: $C.@ColorBlueAccent,
+        RenderBold: true
+      );
+    }
+  }
+}
+

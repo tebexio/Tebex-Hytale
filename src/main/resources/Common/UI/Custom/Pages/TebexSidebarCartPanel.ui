@@ -1,0 +1,72 @@
+$C = "../Common.ui";
+
+Group #Panel {
+  Anchor: (Full: 0);
+  LayoutMode: Top;
+  Background: #10253a(0.96);
+
+  Group {
+    Anchor: (Height: 48, Bottom: 14);
+    LayoutMode: Center;
+    Background: #314867(0.88);
+
+    Label #PanelTitle {
+      Style: (
+        ...$C.@TitleStyle,
+        FontSize: 18,
+        TextColor: $C.@ColorDefault,
+        HorizontalAlignment: Center,
+        RenderBold: true
+      );
+      Text: "Cart";
+    }
+  }
+
+  Group {
+    FlexWeight: 1;
+    LayoutMode: Top;
+    Padding: (Left: 18, Top: 4, Right: 18, Bottom: 18);
+
+    Label #EmptyState {
+      Style: (
+        FontSize: 14,
+        TextColor: $C.@ColorDefaultLabel,
+        Wrap: true
+      );
+      Anchor: (Bottom: 12);
+      Text: "";
+    }
+
+    Group #ItemsSlot {
+      LayoutMode: Top;
+      Anchor: (Bottom: 14);
+    }
+
+    Group {
+      FlexWeight: 1;
+    }
+
+    Group {
+      LayoutMode: Left;
+      Anchor: (Top: 10);
+
+      Label {
+        FlexWeight: 1;
+        Style: (
+          FontSize: 15,
+          TextColor: $C.@ColorDefaultLabel
+        );
+        Text: "Total";
+      }
+
+      Label #TotalValue {
+        Style: (
+          FontSize: 18,
+          RenderBold: true,
+          TextColor: $C.@ColorDefault
+        );
+        Text: "$0.00";
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+$C = "../Common.ui";
+
+Group #BackButton {
+  Anchor: (Full: 0);
+
+  $C.@SecondaryTextButton #Button {
+    @Anchor = (Width: 54, Height: 40, Left: -9, Top: -2);
+    @Text = " ";
+  }
+
+  Group #Icon {
+    Anchor: (Width: 54, Height: 40, Left: -9, Top: -2);
+    Background: (TexturePath: "Assets/left-button.png");
+  }
+}

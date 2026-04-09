@@ -1,0 +1,44 @@
+$C = "../Common.ui";
+
+Group #Card {
+  LayoutMode: Top;
+  Background: #10253a(0.96);
+
+  Group {
+    Anchor: (Height: 44, Bottom: 14);
+    LayoutMode: Center;
+    Background: #314867(0.88);
+
+    Label #SubcommandName {
+      Style: (
+        ...$C.@TitleStyle,
+        FontSize: 18,
+        TextColor: $C.@ColorDefault,
+        HorizontalAlignment: Center,
+        RenderBold: true
+      );
+    }
+  }
+
+  Group {
+    LayoutMode: Top;
+    Padding: (Left: 20, Top: 4, Right: 20, Bottom: 20);
+
+    Label #SubcommandUsage {
+      Style: (
+        FontSize: 16,
+        RenderBold: true,
+        TextColor: $C.@ColorGoldHighlight
+      );
+      Anchor: (Bottom: 12);
+    }
+
+    Label #SubcommandDescription {
+      Style: (
+        FontSize: 15,
+        TextColor: $C.@ColorDefaultLabel,
+        Wrap: true
+      );
+    }
+  }
+}

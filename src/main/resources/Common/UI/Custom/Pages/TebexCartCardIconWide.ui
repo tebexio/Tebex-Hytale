@@ -1,0 +1,88 @@
+$C = "../Common.ui";
+
+Group #Card {
+  Anchor: (Width: 996, Height: 228, Bottom: 16);
+  LayoutMode: Top;
+
+  Group {
+    Anchor: (Height: 166, Bottom: 10);
+    Padding: (Full: 14);
+    LayoutMode: Left;
+    Background: #10253a(0.96);
+
+    ItemSlot #ItemIcon {
+      Anchor: (Width: 92, Height: 92, Right: 14);
+      ShowQuantity: false;
+    }
+
+    Group {
+      LayoutMode: Top;
+      FlexWeight: 1;
+
+      Label #SubcommandName {
+        Style: (
+          FontSize: 22,
+          RenderBold: true,
+          TextColor: $C.@ColorDefault
+        );
+        Anchor: (Bottom: 8);
+      }
+
+      Label #SubcommandUsage {
+        Style: (
+          FontSize: 15,
+          TextColor: $C.@ColorBlueAccent,
+          RenderBold: true
+        );
+        Anchor: (Bottom: 8);
+      }
+
+      Label #SubcommandDescription {
+        Style: (
+          FontSize: 14,
+          TextColor: $C.@ColorDefaultLabel,
+          Wrap: true
+        );
+      }
+    }
+  }
+
+  Group {
+    Anchor: (Height: 40);
+    LayoutMode: Left;
+
+    $C.@SecondaryTextButton #DecrementButton {
+      @Anchor = (Width: 68, Height: 40, Right: 8);
+      @Text = "-";
+    }
+
+    Group #QuantityBadge {
+      Anchor: (Width: 84, Height: 40, Right: 8);
+      LayoutMode: Center;
+      Padding: (Top: 4);
+      Background: #08111b(0.82);
+
+      Label #QuantityLabel {
+        Anchor: (Full: 0);
+        Style: (
+          FontSize: 15,
+          RenderBold: true,
+          TextColor: $C.@ColorDefault,
+          HorizontalAlignment: Center
+        );
+        Text: "1";
+      }
+    }
+
+    $C.@SecondaryTextButton #IncrementButton {
+      @Anchor = (Width: 68, Height: 40, Right: 12);
+      @Text = "+";
+    }
+
+    $C.@TextButton #RemoveButton {
+      @Anchor = (Height: 40);
+      @Text = "Remove";
+    }
+  }
+}
+
