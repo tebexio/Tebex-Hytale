@@ -1,6 +1,7 @@
 # Tebex Plugin for Hytale Servers
 
-This is the official Tebex plugin for Hytale, which enables automatic command execution, player-specific package fulfillment, and robust monetization options for Hytale server operators.
+This is the official Tebex plugin for Hytale, which enables automatic command execution, player-specific package fulfillment, and robust monetization options for Hytale server operators, complete with a in-game store browser, cart system, and QR code checkout.
+<img width="1411" height="832" alt="image" src="https://github.com/user-attachments/assets/e2f9b4f8-eb32-403a-ac69-c66802d4b24f" />
 
 # What is Tebex?
 Tebex is a game monetization engine featuring over 120 payment methods, chargeback protection, fraud protection, and 3-day payouts. Tebex allows you to sell items, subscriptions, and more from an in-game customized shop.
@@ -26,7 +27,6 @@ In console, run:
 ```
 tebex secret YOUR_SECRET_KEY
 ```
-
 In-game, run:
 ```
 tebex info
@@ -35,6 +35,18 @@ tebex info
 Confirm your store's details are displayed.
 
 You're all set! Your Hytale server is now fully integrated with Tebex. When players purchase a package, it will run your configured command to fulfill their purchase. [Start a Tebex store today](https://www.tebex.io/game-servers).
+
+# Store Browser UI
+
+The plugin implements a store browser UI now opens with `/buy`, showing the categories and packages available for sale.
+
+Users can check out a basket by scanning a QR code generated on the fly, or visit a link generated in chat to complete payment and receive their items.
+
+**Restart required after first startup:** An asset pack is built at startup containing the package thumbnails downloaded from your Tebex store. This will be saved to `mods/Tebex_Tebex-Hytale-Thumbnails`. You must restart the server for the new asset pack to be recognized, but this must only be done once.
+
+After the first startup, you can rebuild the store's assets at anytime with `/tebex rebuild`. Assets must be rebuilt any time you make changes to your store's thumbnails.
+
+If you do not want to use the Store Browser, set `StoreBrowserEnabled` to false in the configuration, and a link to your webstore will be shown instead when `/buy` is used.
 
 # Commands and Permissions
 
@@ -49,7 +61,6 @@ There are more in-depth configuration options available in the plugin's configur
 ```json
 {
     "SecretKey": "qwertyuiopasdfghjklzxcvbnm9876543210",
-    "HeadlessPrivateKey": "",
     "BuyCommandName": "buy",
     "BuyCommandEnabled": true,
     "StoreBrowserEnabled": true,
