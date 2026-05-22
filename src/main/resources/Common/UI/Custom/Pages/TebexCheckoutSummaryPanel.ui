@@ -40,7 +40,7 @@ Group #Panel {
         RenderBold: true,
         TextColor: $C.@ColorDefault
       );
-      Text: "$0.00";
+      Text: "0.00 USD";
     }
   }
 

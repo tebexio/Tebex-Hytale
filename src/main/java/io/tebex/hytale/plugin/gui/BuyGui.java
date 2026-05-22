@@ -586,7 +586,7 @@ public final class BuyGui {
             int to = Math.min(entries.size(), from + CART_PAGE_SIZE);
 
             commands.append(GRID_ROOT, CHECKOUT_SUMMARY_PANEL_TEMPLATE);
-            commands.set(checkoutSummaryTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
+            commands.set(checkoutSummaryTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), formatMoney(0d)));
 
             for (int i = from; i < to; i++) {
                 CartEntry entry = entries.get(i);
@@ -594,7 +594,7 @@ public final class BuyGui {
                 String template = resolveCheckoutSummaryRowTemplate(entry.pack());
                 commands.append(checkoutSummaryItemsSelector(), template);
                 commands.set(checkoutSummaryRowNameSelector(rowIndex), uiText(buildCheckoutSummaryName(entry), "Package"));
-                commands.set(checkoutSummaryRowPriceSelector(rowIndex), uiText(formatMoney(entry.subtotal()), "$0.00"));
+                commands.set(checkoutSummaryRowPriceSelector(rowIndex), uiText(formatMoney(entry.subtotal()), formatMoney(0d)));
 
                 if (isCheckoutSummaryIconTemplate(template)) {
                     String itemId = resolvePackageItemId(entry.pack());
@@ -1705,7 +1705,7 @@ public final class BuyGui {
         ) {
             commands.append(DETAIL_SECONDARY_CARD_SLOT, SIDEBAR_CART_TEMPLATE);
             commands.set(sidebarCartTitleSelector(), uiText("Cart", "Cart"));
-            commands.set(sidebarCartTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), "$0.00"));
+            commands.set(sidebarCartTotalSelector(), uiText(formatMoney(resolveCartTotal(entries)), formatMoney(0d)));
             commands.set(
                     sidebarCartEmptySelector(),
                     uiText(entries.isEmpty() ? "Your cart is empty" : "", "")
@@ -1717,7 +1717,7 @@ public final class BuyGui {
                 commands.append(sidebarCartItemsSelector(), template);
                 commands.set(sidebarCartRowNameSelector(i), uiText(sanitizeUiText(entry.pack().getName()), "Package"));
                 commands.set(sidebarCartRowQuantitySelector(i), uiText(Integer.toString(entry.quantity()), "1"));
-                commands.set(sidebarCartRowPriceSelector(i), uiText(formatMoney(entry.subtotal()), "$0.00"));
+                commands.set(sidebarCartRowPriceSelector(i), uiText(formatMoney(entry.subtotal()), formatMoney(0d)));
 
                 if (isSidebarCartIconTemplate(template)) {
                     String itemId = resolvePackageItemId(entry.pack());
@@ -2501,16 +2501,20 @@ public final class BuyGui {
         @Nonnull
         private static String formatMoney(double amount) {
             TebexPlugin plugin = TebexPlugin.get();
-            String symbol = "$";
+            String currencyCode = "USD";
             if (plugin.getTebexServerInfo() != null
                     && plugin.getTebexServerInfo().getAccount() != null
                     && plugin.getTebexServerInfo().getAccount().getCurrency() != null) {
-                String configured = plugin.getTebexServerInfo().getAccount().getCurrency().getSymbol();
+                String configured = plugin.getTebexServerInfo().getAccount().getCurrency().getIso4217();
                 if (configured != null && !configured.isBlank()) {
-                    symbol = configured;
+                    currencyCode = configured;
                 }
+            } else if (plugin.getHeadlessWebstore() != null
+                    && plugin.getHeadlessWebstore().getCurrency() != null
+                    && !plugin.getHeadlessWebstore().getCurrency().isBlank()) {
+                currencyCode = plugin.getHeadlessWebstore().getCurrency();
             }
-            return symbol + String.format(Locale.US, "%.2f", amount);
+            return String.format(Locale.US, "%.2f %s", amount, currencyCode.toUpperCase(Locale.ROOT));
         }
 
         private double resolveCartTotal(@Nonnull List<CartEntry> entries) {

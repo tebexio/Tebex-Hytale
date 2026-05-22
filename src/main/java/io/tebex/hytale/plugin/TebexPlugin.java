@@ -1588,7 +1588,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 + "  }\n"
                 + "\n"
                 + "  Group {\n"
-                + "    Anchor: (Width: 62, Height: 34);\n"
+                + "    Anchor: (Width: 92, Height: 34);\n"
                 + "    LayoutMode: Center;\n"
                 + "    Padding: (Top: 10);\n"
                 + "\n"
@@ -1598,7 +1598,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 + "        RenderBold: true,\n"
                 + "        TextColor: $C.@ColorGoldHighlight\n"
                 + "      );\n"
-                + "      Text: \"$0.00\";\n"
+                + "      Text: \"0.00 USD\";\n"
                 + "    }\n"
                 + "  }\n"
                 + "}\n";
@@ -1643,7 +1643,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 + "  }\n"
                 + "\n"
                 + "  Group {\n"
-                + "    Anchor: (Width: 72, Height: 36);\n"
+                + "    Anchor: (Width: 110, Height: 36);\n"
                 + "    LayoutMode: Center;\n"
                 + "    Padding: (Top: 8);\n"
                 + "\n"
@@ -1653,7 +1653,7 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 + "        RenderBold: true,\n"
                 + "        TextColor: $C.@ColorGoldHighlight\n"
                 + "      );\n"
-                + "      Text: \"$0.00\";\n"
+                + "      Text: \"0.00 USD\";\n"
                 + "    }\n"
                 + "  }\n"
                 + "}\n";
@@ -2087,15 +2087,18 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
 
     @Nonnull
     private String formatCurrency(double amount) {
-        String symbol = tebexServerInfo != null
+        String currencyCode = tebexServerInfo != null
                 && tebexServerInfo.getAccount() != null
                 && tebexServerInfo.getAccount().getCurrency() != null
-                ? safeText(tebexServerInfo.getAccount().getCurrency().getSymbol())
+                ? safeText(tebexServerInfo.getAccount().getCurrency().getIso4217())
                 : "";
-        if (symbol.isBlank()) {
-            symbol = "$";
+        if (currencyCode.isBlank() && headlessWebstore != null && headlessWebstore.getCurrency() != null) {
+            currencyCode = safeText(headlessWebstore.getCurrency());
         }
-        return symbol + String.format(Locale.US, "%.2f", amount);
+        if (currencyCode.isBlank()) {
+            currencyCode = "USD";
+        }
+        return String.format(Locale.US, "%.2f %s", amount, currencyCode.toUpperCase(Locale.ROOT));
     }
 
     @Nonnull
