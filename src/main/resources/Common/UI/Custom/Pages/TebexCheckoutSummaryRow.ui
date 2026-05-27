@@ -34,7 +34,7 @@ Group #Row {
   }
 
   Group {
-    Anchor: (Width: 72, Height: 36);
+    Anchor: (Width: 110, Height: 36);
     LayoutMode: Center;
     Padding: (Top: 8);
 
@@ -44,7 +44,7 @@ Group #Row {
         RenderBold: true,
         TextColor: $C.@ColorGoldHighlight
       );
-      Text: "$0.00";
+      Text: "0.00 USD";
     }
   }
 }
