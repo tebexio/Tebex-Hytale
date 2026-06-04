@@ -353,10 +353,6 @@ public class TebexPlugin extends JavaPlugin implements IPluginAdapter {
                 return direct;
             }
 
-            var parent = channel.parent();
-            if (parent != null) {
-                return extractIpv4(parent.remoteAddress());
-            }
         } catch (Exception e) {
             debug("Failed to resolve player IPv4 for " + playerRef.getUsername() + ": " + e.getMessage());
         }

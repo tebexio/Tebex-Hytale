@@ -37,10 +37,11 @@ public class TebexCheckoutCommand extends CommandBase {
             return;
         }
 
-        var req = new CheckoutRequest(ctx.sender().getDisplayName(), pack.getId());
+        String username = ctx.sender().getUsername();
+        var req = new CheckoutRequest(username, pack.getId());
         try {
             var url = plugin.getPluginApi().checkout(req);
-            plugin.info(ctx.sender().getDisplayName() + " created a checkout link for " + pack.getName());
+            plugin.info(username + " created a checkout link for " + pack.getName());
             plugin.info("Checkout URL: " + url.getUrl());
             ctx.sendMessage(Message.raw("Checkout a " + pack.getName() + " by clicking here: " + url.getUrl()).link(url.getUrl()));
         } catch (Exception e) {

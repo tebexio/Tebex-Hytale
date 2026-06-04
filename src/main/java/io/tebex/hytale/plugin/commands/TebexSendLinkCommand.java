@@ -61,8 +61,8 @@ public class TebexSendLinkCommand extends AbstractPlayerCommand {
                     var req = new CheckoutRequest(targetPlayerArg.getName(), targetPackageArg.get(ctx));
                     try {
                         var url = plugin.getPluginApi().checkout(req);
-                        targetPlayerComponent.sendMessage(Message.raw(ctx.sender().getDisplayName() + " has sent you a checkout link:"));
-                        targetPlayerComponent.sendMessage(Message.raw("Buy " + pack.getName() + " by clicking here: " + url).link(url.getUrl()));
+                        targetPlayerRef.sendMessage(Message.raw(ctx.sender().getUsername() + " has sent you a checkout link:"));
+                        targetPlayerRef.sendMessage(Message.raw("Buy " + pack.getName() + " by clicking here: " + url.getUrl()).link(url.getUrl()));
                     } catch (Exception e) {
                         ctx.sendMessage(Message.raw("An unexpected error occurred while checking out the target player!"));
                         plugin.error("Could not send link to player, failed to generate checkout link", e);
