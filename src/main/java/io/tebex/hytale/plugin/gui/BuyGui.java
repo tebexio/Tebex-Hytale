@@ -71,7 +71,7 @@ public final class BuyGui {
 
         player.getPageManager().openCustomPage(ref, store, new TebexStorePage(playerRef));
         if (TebexPlugin.get().isDebugModeEnabled()) {
-            player.sendMessage(Message.raw("Buy UI debug is enabled. Check server logs for [BUY-UI] description and image field dumps."));
+            playerRef.sendMessage(Message.raw("Buy UI debug is enabled. Check server logs for [BUY-UI] description and image field dumps."));
         }
         return true;
     }
@@ -217,10 +217,12 @@ public final class BuyGui {
         private int selectedPackageId = -1;
         private int page = 0;
         private final Set<Integer> debugLoggedPackageIds = new HashSet<>();
+        private final PlayerRef playerRef;
         private final CartSession cartSession;
 
         private TebexStorePage(@Nonnull PlayerRef playerRef) {
             super(playerRef, CustomPageLifetime.CanDismiss, TebexStoreEventData.CODEC);
+            this.playerRef = playerRef;
             this.cartSession = BuyGui.getInstance().getOrCreateCartSession(playerRef);
         }
 
@@ -1367,8 +1369,8 @@ public final class BuyGui {
                         Player player = store.getComponent(ref, Player.getComponentType());
                         if (player != null) {
                             cartSession.clearCheckoutPreview();
-                            player.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
-                            player.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
+                            playerRef.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
+                            playerRef.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
                             close();
                         }
                     });
@@ -1405,8 +1407,8 @@ public final class BuyGui {
                 return;
             }
 
-            player.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
-            player.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
+            playerRef.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
+            playerRef.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
             String basketIdent = cartSession.getBasketIdent();
             if (cartSession.beginPaymentPoll(basketIdent)) {
                 pollForPaymentCompletionAsync(ref, store, basketIdent);
@@ -1525,7 +1527,7 @@ public final class BuyGui {
             }
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
-                player.sendMessage(message);
+                playerRef.sendMessage(message);
             }
         }
 
