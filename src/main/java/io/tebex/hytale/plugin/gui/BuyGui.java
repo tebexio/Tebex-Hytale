@@ -21,7 +21,9 @@ import io.tebex.hytale.plugin.TebexPlugin;
 import io.tebex.sdk.headlessapi.models.Basket;
 import io.tebex.sdk.pluginapi.models.Category;
 import io.tebex.sdk.pluginapi.models.CategoryPackage;
+import io.tebex.sdk.pluginapi.models.CheckoutUrl;
 import io.tebex.sdk.pluginapi.models.Package;
+import io.tebex.sdk.pluginapi.models.requests.CheckoutRequest;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -904,9 +906,7 @@ public final class BuyGui {
                     }
                     sendPlayerMessage(ref, store, Message.raw("Creating checkout for '" + pack.getName() + "'..."));
                     close();
-                    HashMap<Integer, Integer> singleItem = new HashMap<>();
-                    singleItem.put(pack.getId(), 1);
-                    createCheckoutFromCartAsync(ref, store, singleItem, false);
+                    buyNowAsync(ref, store, pack);
                 }
                 case ACTION_OPEN_CART -> {
                     mode = Mode.CART;
@@ -1014,7 +1014,7 @@ public final class BuyGui {
             TebexPlugin plugin = TebexPlugin.get();
             CompletableFuture.runAsync(() -> {
                 try {
-                    String basketIdent = ensureCartBasketIdent(plugin);
+                    String basketIdent = ensureCartBasketIdent(plugin, pack.getId());
                     plugin.getHeadlessApi().addBasketPackage(basketIdent, pack.getId(), 1);
                     Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
                     syncCartSessionFromBasket(basket);
@@ -1031,7 +1031,7 @@ public final class BuyGui {
                         );
                         cartSession.setBasketIdent("");
                         try {
-                            String basketIdent = ensureCartBasketIdent(plugin);
+                            String basketIdent = ensureCartBasketIdent(plugin, pack.getId());
                             plugin.getHeadlessApi().addBasketPackage(basketIdent, pack.getId(), 1);
                             Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
                             syncCartSessionFromBasket(basket);
@@ -1100,7 +1100,7 @@ public final class BuyGui {
             int targetQuantity = entry.quantity() + delta;
             CompletableFuture.runAsync(() -> {
                 try {
-                    String basketIdent = ensureCartBasketIdent(plugin);
+                    String basketIdent = ensureCartBasketIdent(plugin, packageId);
                     Basket basket;
                     if (delta > 0) {
                         plugin.getHeadlessApi().addBasketPackage(basketIdent, packageId, delta);
@@ -1255,7 +1255,7 @@ public final class BuyGui {
             CompletableFuture.runAsync(() -> {
                 long previewStartedAt = System.currentTimeMillis();
                 try {
-                    String basketIdent = ensureCartBasketIdent(plugin);
+                    String basketIdent = ensureCartBasketIdent(plugin, firstCartPackageId());
                     Basket basket = plugin.getHeadlessApi().getBasket(basketIdent);
                     syncCartSessionFromBasket(basket);
 
@@ -1323,63 +1323,32 @@ public final class BuyGui {
             }
         }
 
-        private void createCheckoutFromCartAsync(
+        // Buy Now: a single-package checkout minted through the Plugin API /checkout
+        // endpoint. Unlike the cart flow, we send the player the Plugin /checkout url
+        // directly — clicking it adds exactly the one package (once), so there is no
+        // Headless basket to build and nothing to re-add. This is the same canonical
+        // single-package checkout that the /checkout command uses.
+        private void buyNowAsync(
                 @Nonnull Ref<EntityStore> ref,
                 @Nonnull Store<EntityStore> store,
-                @Nonnull Map<Integer, Integer> packageQuantities,
-                boolean pollForCompletion
+                @Nonnull CategoryPackage pack
         ) {
             TebexPlugin plugin = TebexPlugin.get();
             CompletableFuture.runAsync(() -> {
                 try {
-                    Basket basket = plugin.getHeadlessApi().createBasket(
-                            playerRef.getUsername(),
-                            null,
-                            null,
-                            false,
-                            plugin.resolvePlayerIpv4(playerRef)
-                    );
-                    if (basket.getIdent() == null || basket.getIdent().isBlank()) {
-                        throw new IOException("Headless basket did not return a basket identifier.");
-                    }
-
-                    String basketIdent = basket.getIdent();
-                    for (Map.Entry<Integer, Integer> entry : packageQuantities.entrySet()) {
-                        int packageId = entry.getKey();
-                        int quantity = Math.max(1, entry.getValue());
-                        plugin.getHeadlessApi().addBasketPackage(basketIdent, packageId, quantity);
-                    }
-
-                    basket = plugin.getHeadlessApi().getBasket(basketIdent);
-                    if (pollForCompletion) {
-                        cartSession.setBasketIdent(basketIdent);
-                    }
-                    syncCartSessionFromBasket(basket);
-
-                    String checkoutUrl = basket.getLinks() == null ? null : basket.getLinks().getCheckout();
+                    CheckoutUrl checkout = plugin.getPluginApi().checkout(new CheckoutRequest(playerRef.getUsername(), pack.getId()));
+                    String checkoutUrl = checkout == null ? null : checkout.getUrl();
                     if (checkoutUrl == null || checkoutUrl.isBlank()) {
-                        throw new IOException("Headless basket did not return a checkout URL.");
+                        throw new IOException("Plugin API checkout did not return a checkout URL.");
                     }
 
                     World world = store.getExternalData().getWorld();
                     world.execute(() -> {
-                        if (!ref.isValid()) {
-                            return;
-                        }
-                        Player player = store.getComponent(ref, Player.getComponentType());
-                        if (player != null) {
-                            cartSession.clearCheckoutPreview();
-                            playerRef.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
-                            playerRef.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
-                            close();
-                        }
+                        playerRef.sendMessage(Message.raw("Checkout ready. Click here to open Tebex checkout.").link(checkoutUrl));
+                        playerRef.sendMessage(Message.raw(checkoutUrl).link(checkoutUrl));
                     });
-
-                    if (pollForCompletion) {
-                        pollForPaymentCompletionAsync(ref, store, basketIdent);
-                    }
                 } catch (Exception e) {
-                    plugin.error("Failed to create cart checkout URL", e);
+                    plugin.error("Failed to create checkout URL for package " + pack.getId(), e);
                     String message = e.getMessage() == null || e.getMessage().isBlank()
                             ? e.getClass().getSimpleName()
                             : e.getMessage();
@@ -1462,26 +1431,40 @@ public final class BuyGui {
         }
 
         @Nonnull
-        private String ensureCartBasketIdent(@Nonnull TebexPlugin plugin) throws IOException, InterruptedException {
+        private String ensureCartBasketIdent(@Nonnull TebexPlugin plugin, int seedPackageId) throws IOException, InterruptedException {
             String basketIdent = cartSession.getBasketIdent();
             if (!basketIdent.isBlank()) {
                 return basketIdent;
             }
 
-            Basket basket = plugin.getHeadlessApi().createBasket(
-                    playerRef.getUsername(),
-                    null,
-                    null,
-                    false,
-                    plugin.resolvePlayerIpv4(playerRef)
-            );
-            if (basket.getIdent() == null || basket.getIdent().isBlank()) {
-                throw new IOException("Headless basket did not return a basket identifier.");
+            // Baskets cannot be created through the Headless API for this game, so mint
+            // one through the Plugin API /checkout endpoint (authenticated with the
+            // secret key), which returns the new basket ident. The seed package is NOT
+            // added as a Headless-visible line item by this call — callers still add
+            // every package, including the seed, through the Headless API afterwards.
+            // Because the player is always sent the Headless basket link (never the
+            // Plugin /checkout url), re-adding the seed via Headless cannot duplicate it.
+            if (seedPackageId <= 0) {
+                throw new IOException("A package is required to create a basket.");
             }
 
-            cartSession.setBasketIdent(basket.getIdent());
-            cartSession.setTotals(basket.getTotalPrice());
-            return basket.getIdent();
+            CheckoutUrl checkout = plugin.getPluginApi().checkout(new CheckoutRequest(playerRef.getUsername(), seedPackageId));
+            String ident = checkout == null ? null : checkout.getIdent();
+            if (ident == null || ident.isBlank()) {
+                throw new IOException("Plugin API checkout did not return a basket identifier.");
+            }
+
+            cartSession.setBasketIdent(ident);
+            return ident;
+        }
+
+        private int firstCartPackageId() {
+            for (Integer packageId : cartSession.snapshotQuantities().keySet()) {
+                if (packageId != null && packageId > 0) {
+                    return packageId;
+                }
+            }
+            return -1;
         }
 
         private void updateCartSessionFromBasket(@Nullable Basket basket) {

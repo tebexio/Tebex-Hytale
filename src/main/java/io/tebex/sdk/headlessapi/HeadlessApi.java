@@ -5,7 +5,6 @@ import io.tebex.sdk.headlessapi.models.AddBasketPackageRequest;
 import io.tebex.sdk.headlessapi.models.Basket;
 import io.tebex.sdk.headlessapi.models.BasketResponse;
 import io.tebex.sdk.headlessapi.models.CategoryResponse;
-import io.tebex.sdk.headlessapi.models.CreateBasketRequest;
 import io.tebex.sdk.headlessapi.models.HeadlessCategory;
 import io.tebex.sdk.headlessapi.models.HeadlessPackage;
 import io.tebex.sdk.headlessapi.models.PackageResponse;
@@ -87,37 +86,10 @@ public class HeadlessApi {
         return response.getData();
     }
 
-    @Nonnull
-    public Basket createBasket(@Nullable String username, @Nullable String completeUrl, @Nullable String cancelUrl, boolean completeAutoRedirect)
-            throws IOException, InterruptedException {
-        return createBasket(username, completeUrl, cancelUrl, completeAutoRedirect, null);
-    }
-
-    @Nonnull
-    public Basket createBasket(
-            @Nullable String username,
-            @Nullable String completeUrl,
-            @Nullable String cancelUrl,
-            boolean completeAutoRedirect,
-            @Nullable String ipAddress
-    )
-            throws IOException, InterruptedException {
-        CreateBasketRequest payload = new CreateBasketRequest();
-        payload.setUsername(username == null ? null : username.trim());
-        payload.setCompleteUrl(completeUrl == null ? null : completeUrl.trim());
-        payload.setCancelUrl(cancelUrl == null ? null : cancelUrl.trim());
-        payload.setCompleteAutoRedirect(completeAutoRedirect);
-        payload.setIpAddress(ipAddress == null || ipAddress.isBlank() ? null : ipAddress.trim());
-
-        BasketResponse response = PluginApi.GSON.fromJson(
-                request(Verb.POST, "accounts/" + requireToken() + "/baskets", payload),
-                BasketResponse.class
-        );
-        if (response == null || response.getData() == null) {
-            return new Basket();
-        }
-        return response.getData();
-    }
+    // NOTE: baskets are NOT created here. The Headless API cannot create baskets
+    // for this game — baskets are minted through the Plugin API /checkout endpoint
+    // (see PluginApi#checkout / BuyGui#ensureCartBasketIdent), which returns the new
+    // basket ident. This client only reads and mutates an already-minted basket.
 
     @Nonnull
     public Basket getBasket(@Nonnull String basketIdent) throws IOException, InterruptedException {
